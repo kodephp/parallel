@@ -4,6 +4,22 @@
 
 本文档详细对比 `kode/parallel`（基于 ext-parallel）和传统 pthreads 扩展的差异，帮助开发者选择合适的并行扩展。
 
+## ⚠️ 重要澄清：ext-parallel 是多线程模型
+
+| 扩展 | 并发模型 | 内存模型 | 通信方式 |
+|------|---------|---------|---------|
+| **ext-parallel** | **多线程（线程池）** | 独立空间(COW) | Channel |
+| pthreads | 多线程 | 共享内存 | Volatile |
+| pcntl | 多进程 | 完全独立 | IPC/pipe |
+
+**ext-parallel 和 pthreads 都是多线程**，但核心区别在于**内存模型**：
+- **ext-parallel**：线程独立内存 + Channel 通信（无共享内存问题，更稳定）
+- **pthreads**：线程共享内存 + Volatile 同步（复杂但可直接共享对象）
+
+**ext-parallel vs pcntl**：前者是多线程，后者是多进程，适用场景不同。
+
+---
+
 ## 核心差异
 
 | 特性 | kode/parallel | pthreads |
