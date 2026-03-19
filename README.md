@@ -4,7 +4,7 @@
 
 [![PHP Version](https://img.shields.io/badge/PHP-%3E%3D8.1-blue)](https://php.net)
 [![License](https://img.shields.io/badge/License-Apache--2.0-green)](LICENSE)
-[![Package Version](https://img.shields.io/badge/Version-1.0.0-orange)](composer.json)
+[![Package Version](https://img.shields.io/badge/Version-1.2.0-orange)](composer.json)
 
 ## 目录
 
@@ -14,21 +14,21 @@
 - [安装](#安装)
 - [快速开始](#快速开始)
 - [核心组件详解](#核心组件详解)
+- [PHP 8.5 新特性](#php-85-新特性)
+- [Fiber 协程](#fiber-协程)
 - [高级用法](#高级用法)
 - [性能压测](#性能压测)
 - [最佳实践](#最佳实践)
 - [常见问题](#常见问题)
-- [更新日志](#更新日志)
+- [文档索引](#文档索引)
 
 ---
 
 ## 简介
 
-`kode/parallel` 是适用于 PHP 8.1+ 的高性能并行并发扩展库。该库基于 PHP 官方的 `ext-parallel` 扩展构建，提供了更高级别的面向对象 API 和完整的中文文档支持。
+`kode/parallel` 是适用于 PHP 8.1+ 的高性能并行并发扩展库。该库基于 PHP 官方的 `ext-parallel` 扩展构建，提供了更高级别的面向对象 API、完整的中文文档支持，以及 PHP 8.5 新特性的前向兼容实现。
 
 ### 为什么要用并行？
-
-在现代 Web 开发中，我们经常遇到需要处理大量计算任务的场景：
 
 ```php
 // 串行处理：5个任务，每个1秒 = 总计5秒
@@ -55,6 +55,10 @@ for ($i = 0; $i < 5; $i++) {
 | **Channel** | Task 间双向通信，支持有/无界限通道 |
 | **Events** | 事件循环驱动，简化异步编程模型 |
 | **Fiber** | PHP Fiber 协程封装（PHP 8.1+） |
+| **Sync** | 同步原语：Mutex、Semaphore、Cond、Barrier |
+| **Pipe** | 进程间通信管道 |
+| **CurlMulti** | 并行 HTTP 请求封装 |
+| **Util** | PHP 8.5 兼容工具：管道操作符、Clone With 等 |
 
 ---
 
@@ -64,7 +68,7 @@ for ($i = 0; $i < 5; $i++) {
 |------|------|
 | PHP 版本 | >= 8.1 |
 | 扩展 | ext-parallel |
-| 依赖 | kode/context ^1.0, kode/facade ^1.0 |
+| 可选扩展 | ext-curl (用于 CurlMulti) |
 
 ### PHP 版本适配
 
@@ -74,7 +78,7 @@ for ($i = 0; $i < 5; $i++) {
 | 8.2 | ✅ 完全支持 | 随机字节改进 |
 | 8.3 | ✅ 完全支持 | 改进的类型系统 |
 | 8.4 | ✅ 完全支持 | 改进的性能 |
-| 8.5 | ✅ 最佳支持 | 增强的 Fiber 调度 |
+| 8.5 | ✅ 最佳支持 | 管道操作符、Clone With、持久化 cURL |
 
 ---
 
@@ -103,21 +107,10 @@ extension=parallel.so
 composer require kode/parallel
 ```
 
-### 3. 验证安装
+### 3. 可选：安装 kode/fibers（增强功能）
 
-```php
-<?php
-require_once __DIR__ . '/vendor/autoload.php';
-
-use Kode\Parallel\Runtime\Runtime;
-
-$runtime = new Runtime();
-echo "✅ kode/parallel 安装成功！\n";
-
-$future = $runtime->run(fn() => 'Hello Parallel!');
-echo "测试: " . $future->get() . "\n";
-
-$runtime->close();
+```bash
+composer require kode/fibers
 ```
 
 ---
@@ -150,101 +143,70 @@ require_once __DIR__ . '/vendor/autoload.php';
 use Kode\Parallel\Runtime\Runtime;
 use Kode\Parallel\Task\Task;
 
-// 创建 Runtime 实例
 $runtime = new Runtime();
 
-// 方式一：直接传入闭包
+// 直接执行闭包
 $future1 = $runtime->run(fn() => 100 + 200);
 
-// 方式二：使用 Task 封装
-$task = new Task(fn($args) => $args['x'] * $args['x']);
-$future2 = $runtime->run($task, ['x' => 25]);
+// 带参数
+$future2 = $runtime->run(
+    fn($args) => $args['a'] + $args['b'],
+    ['a' => 10, 'b' => 20]
+);
 
-// 获取结果
-echo "结果1: " . $future1->get() . "\n"; // 300
-echo "结果2: " . $future2->get() . "\n"; // 625
+echo "结果: " . $future1->get() . " / " . $future2->get() . "\n";
 
-// 清理
 $runtime->close();
 ```
 
-### 3. 完整示例 - 生产者消费者
+### 3. 使用 Channel 进行通信
 
 ```php
 <?php
-require_once __DIR__ . '/vendor/autoload.php';
-
 use Kode\Parallel\Runtime\Runtime;
 use Kode\Parallel\Channel\Channel;
 
-// 创建有界限通道（容量为10）
-$channel = Channel::bounded(10, 'work_channel');
+$runtime = new Runtime();
+$channel = Channel::make('work');
 
-// 生产者任务
-$producer = function () use ($channel) {
-    for ($i = 1; $i <= 100; $i++) {
-        $channel->send([
-            'id' => $i,
-            'data' => str_repeat('x', 100),
-            'timestamp' => microtime(true),
-        ]);
+// 生产者
+$runtime->run(function() use ($channel) {
+    for ($i = 0; $i < 100; $i++) {
+        $channel->send(['item' => $i]);
     }
     $channel->close();
-    echo "[Producer] 发送完成，共100条数据\n";
-};
+});
 
-// 消费者任务
-$consumer = function () use ($channel) {
-    $count = 0;
+// 消费者
+$future = $runtime->run(function() use ($channel) {
+    $sum = 0;
     while (!$channel->isEmpty()) {
-        $item = $channel->recv();
-        $count++;
+        $sum += $channel->recv()['item'];
     }
-    return $count;
-};
+    return $sum;
+});
 
-// 创建 Runtime 并执行
-$runtime = new Runtime();
-
-$prodFuture = $runtime->run($producer);
-$consFuture = $runtime->run($consumer);
-
-// 等待消费者完成
-$totalProcessed = $consFuture->get();
-echo "[Consumer] 处理了 {$totalProcessed} 条数据\n";
-
+echo "总和: " . $future->get() . "\n";
 $runtime->close();
 ```
 
-### 4. 等待多个任务完成
+### 4. 使用 Fiber 协程
 
 ```php
 <?php
-require_once __DIR__ . '/vendor/autoload.php';
+use Kode\Parallel\Fiber\Fiber;
 
-use Kode\Parallel\Runtime\Runtime;
+$fiber = new Fiber(function() {
+    echo "Fiber 开始\n";
+    $value = Fiber::suspend('暂停一下');
+    echo "收到: {$value}\n";
+    return "完成";
+});
 
-$runtime = new Runtime();
-
-// 创建5个并行任务
-$futures = [];
-for ($i = 0; $i < 5; $i++) {
-    $futures[] = $runtime->run(
-        fn($args) => array_sum(range(1, $args['n'])),
-        ['n' => 10000 + $i * 1000]
-    );
-}
-
-// 等待所有任务完成
-$results = [];
-foreach ($futures as $future) {
-    $results[] = $future->get();
-}
-
-print_r($results);
-// Array ( [0] => 50005000 [1] => 55011000 [2] => 60033000 ... )
-
-$runtime->close();
+$fiber->start();
+echo "主线程继续\n";
+$result = $fiber->resume("恢复数据");
+echo "返回值: {$result}\n";
 ```
 
 ---
@@ -253,823 +215,339 @@ $runtime->close();
 
 ### Runtime - 运行时
 
-Runtime 是 PHP 解释器线程，是并行执行的基础单元。
-
-#### 创建 Runtime
-
-```php
-// 无引导文件
-$runtime = new Runtime();
-
-// 带引导文件（通常是自动加载器）
-$runtime = new Runtime('/path/to/autoload.php');
-```
-
-#### 执行任务
-
-```php
-// 直接执行闭包
-$future = $runtime->run(fn() => 42);
-
-// 带参数
-$future = $runtime->run(
-    fn($args) => $args['a'] + $args['b'],
-    ['a' => 10, 'b' => 20]
-);
-
-// 使用 Task 对象
-$task = new Task(fn($args) => strtoupper($args['str']));
-$future = $runtime->run($task, ['str' => 'hello']);
-```
-
-#### Runtime 生命周期
-
 ```php
 $runtime = new Runtime();
-
-// 检查状态
-echo $runtime->isRunning() ? '运行中' : '空闲';
-
-// 关闭（释放资源）
+$future = $runtime->run($task, $args);
 $runtime->close();
-
-// 或者使用完自动关闭
-(function() {
-    $runtime = new Runtime();
-    $result = $runtime->run(fn() => 42)->get();
-    $runtime->close();
-})();
 ```
-
----
 
 ### Task - 任务
 
-Task 是用于并行执行的闭包封装，会自动验证任务合法性。
-
-#### 创建 Task
-
-```php
-// 基本用法
-$task = new Task(fn($args) => $args['value'] * 2);
-
-// 工厂方法
-$task = Task::from(fn($args) => strtoupper($args['str']));
-
-// 从文件创建
-$task = Task::fromFile('/path/to/task_code.php', startLine: 10, endLine: 50);
-```
-
-#### Task 限制
-
-在 Task 中**禁止**使用以下指令：
-
-| 限制 | 说明 | 解决方案 |
-|------|------|----------|
-| `yield` | 生成器 | 返回数组或使用 Channel |
-| 引用传递 | `use &$var` | 使用 Channel 传递数据 |
-| 类声明 | `class`、`interface`、`trait` | 在引导文件中预加载 |
-| 命名函数 | `function name()` | 使用闭包代替 |
-
-#### 示例 - 违规检测
-
-```php
-<?php
-// 这个会抛出异常
-try {
-    $task = new Task(function() {
-        yield 1;  // ❌ 禁止：Task 中不能使用 yield
-    });
-} catch (ParallelException $e) {
-    echo "错误: " . $e->getMessage() . "\n";
-    // 输出: Task 中禁止使用 yield 指令
-}
-```
-
----
+Task 中**禁止**使用：yield、引用传递、类声明、命名函数。
 
 ### Future - 异步结果
 
-Future 代表异步任务的未来结果。
-
-#### 基本用法
-
 ```php
-$future = $runtime->run(fn() => expensiveOperation());
-
-// 方式一：阻塞等待结果
-$result = $future->get();
-
-// 方式二：非阻塞获取（未完成返回null）
-$result = $future->getOrNull();
-
-// 方式三：检查完成状态
-if ($future->done()) {
-    $result = $future->get();
-}
+$future->get();        // 阻塞获取
+$future->getOrNull();   // 非阻塞获取
+$future->wait(1000);    // 等待1秒
+$future->cancel();      // 取消任务
 ```
-
-#### 超时控制
-
-```php
-$future = $runtime->run(fn() => sleep(10) . 'done');
-
-// 等待最多3秒
-if ($future->wait(3000)) {
-    echo "完成: " . $future->get() . "\n";
-} else {
-    echo "超时，继续其他操作...\n";
-}
-```
-
-#### 取消任务
-
-```php
-$future = $runtime->run(fn() => sleep(100));
-
-// 取消任务
-if ($future->cancel()) {
-    echo "任务已取消\n";
-}
-
-// 取消后获取会抛异常
-try {
-    $future->get();
-} catch (ParallelException $e) {
-    echo "错误: " . $e->getMessage() . "\n";
-}
-```
-
-#### 任务ID
-
-```php
-$future = $runtime->run(fn() => 42);
-echo "任务ID: " . $future->getId() . "\n";
-```
-
----
 
 ### Channel - 通道
 
-Channel 提供 Task 间的双向通信能力。
-
-#### 创建通道
-
 ```php
-// 无界限通道（推荐用于数据流）
-$channel = Channel::make('my_channel');
+// 无界限通道
+$ch = Channel::make('name');
 
-// 有界限通道（推荐用于控制内存）
-$channel = Channel::bounded(100, 'buffered_channel');
+// 有界限通道（容量为10）
+$ch = Channel::bounded(10);
 
-// 检查通道状态
-$channel->isEmpty(); // 通道是否为空
-$channel->isFull();  // 通道是否已满（仅对有界限通道有效）
+// 发送/接收
+$ch->send($data);
+$data = $ch->recv();
 ```
-
-#### 发送和接收
-
-```php
-// 阻塞发送（通道满时自动等待）
-$channel->send($data);
-
-// 非阻塞发送（通道满时抛异常）
-try {
-    $channel->sendNonBlocking($data);
-} catch (ParallelException $e) {
-    echo "通道已满！\n";
-}
-
-// 阻塞接收
-$data = $channel->recv();
-
-// 非阻塞接收（空时返回null）
-$data = $channel->recvNonBlocking();
-```
-
-#### 完整示例 - 数据处理流水线
-
-```php
-<?php
-require_once __DIR__ . '/vendor/autoload.php';
-
-use Kode\Parallel\Runtime\Runtime;
-use Kode\Parallel\Channel\Channel;
-
-$runtime = new Runtime();
-
-// 创建通道
-$inputChannel = Channel::make('input');
-$processChannel = Channel::make('process');
-$outputChannel = Channel::make('output');
-
-// 输入任务：生成数据
-$inputTask = function () use ($inputChannel) {
-    for ($i = 1; $i <= 1000; $i++) {
-        $inputChannel->send(['id' => $i, 'value' => rand(1, 100)]);
-    }
-    $inputChannel->close();
-};
-
-// 处理任务：转换数据
-$processTask = function () use ($inputChannel, $processChannel) {
-    while (!$inputChannel->isEmpty()) {
-        $item = $inputChannel->recv();
-        $item['processed'] = $item['value'] * 2;
-        $processChannel->send($item);
-    }
-    $processChannel->close();
-};
-
-// 输出任务：收集结果
-$outputTask = function () use ($processChannel, $outputChannel) {
-    $count = 0;
-    $sum = 0;
-    while (!$processChannel->isEmpty()) {
-        $item = $processChannel->recv();
-        $count++;
-        $sum += $item['processed'];
-    }
-    $outputChannel->send(['count' => $count, 'sum' => $sum]);
-    $outputChannel->close();
-};
-
-// 执行流水线
-$runtime->run($inputTask);
-$runtime->run($processTask);
-$runtime->run($outputTask);
-
-// 获取最终结果
-$resultFuture = $runtime->run(fn($args) => $args['ch']->recv(), ['ch' => $outputChannel]);
-$result = $resultFuture->get();
-
-echo "处理了 {$result['count']} 条数据\n";
-echo "总值: {$result['sum']}\n";
-
-$runtime->close();
-```
-
----
 
 ### Events - 事件循环
 
-Events 提供事件循环驱动能力，简化异步编程。
-
-#### 基本用法
-
 ```php
-<?php
-require_once __DIR__ . '/vendor/autoload.php';
-
-use Kode\Parallel\Runtime\Runtime;
-use Kode\Parallel\Channel\Channel;
-use Kode\Parallel\Events\Events;
-
-$runtime = new Runtime();
-$channel = Channel::make('events_channel');
-
-// 添加通道到事件循环
 $events = new Events();
-$events->attachChannel('my_channel', $channel);
+$events->attachChannel('ch1', $channel);
+$events->attachFuture('f1', $future);
 
-// 设置输入
-$events->setInput(['my_channel' => 'Hello Events!']);
-
-// 事件循环
 foreach ($events as $event) {
-    echo "事件类型: " . $event->getType() . "\n";
-    echo "键名: " . $event->getKey() . "\n";
-    echo "值: " . json_encode($event->getValue()) . "\n";
+    // 处理事件
 }
-```
-
-#### Events 配置
-
-```php
-// 非阻塞模式（轮询）
-$events = new Events(
-    Events::POLLING_ENABLED,
-    Events::LOOP_NONBLOCKING
-);
-
-// 阻塞模式（等待事件）
-$events = new Events(
-    Events::POLLING_ENABLED,
-    Events::LOOP_BLOCKING
-);
-
-// 禁用轮询（更高效但需要手动检查）
-$events = new Events(
-    Events::POLLING_DISABLED,
-    Events::LOOP_BLOCKING
-);
 ```
 
 ---
 
-### Fiber - 协程 (PHP 8.1+)
+## PHP 8.5 新特性
 
-Fiber 提供更细粒度的协程控制。
-
-#### FiberManager 基本用法
+### 管道操作符（Pipe Operator）
 
 ```php
 <?php
-require_once __DIR__ . '/vendor/autoload.php';
+use function Kode\Parallel\Util\pipe;
 
-use Kode\Parallel\Fiber\FiberManager;
+// 类似 Unix 的管道操作
+$result = pipe(
+    '  Hello World  ',
+    'trim',
+    'strtoupper',
+    fn($s) => str_replace('WORLD', 'PHP', $s)
+);
 
-$manager = new FiberManager();
-
-// 创建 Fiber
-$manager->spawn('fibonacci', function($n) {
-    if ($n <= 1) return $n;
-    return $n;
-}, [10]);
-
-// 启动所有 Fiber
-$manager->startAll();
-
-// 获取状态
-print_r($manager->getStatus());
-
-// 收集结果
-$results = $manager->collect();
-print_r($results);
+echo $result; // 输出: HELLO PHP
 ```
 
-#### Fiber 生命周期
+### Clone With
 
 ```php
+<?php
+use function Kode\Parallel\Util\clone_with;
+
+class Color {
+    public function __construct(
+        public int $red,
+        public int $green,
+        public int $blue,
+        public int $alpha = 255
+    ) {}
+}
+
+$blue = new Color(79, 91, 147);
+$transparent = clone_with($blue, ['alpha' => 128]);
+```
+
+### 持久化 cURL（PHP 8.5）
+
+```php
+// CurlMulti 自动支持连接复用
+$curl = new CurlMulti();
+$curl->get('https://api.example.com/1');
+$curl->get('https://api.example.com/2');
+$curl->get('https://api.example.com/3');
+$results = $curl->execute(); // 自动复用连接
+```
+
+---
+
+## Fiber 协程
+
+### 基本用法
+
+```php
+<?php
 use Kode\Parallel\Fiber\Fiber;
+use Kode\Parallel\Fiber\FiberManager;
 
+// 单个 Fiber
 $fiber = new Fiber(function($input) {
-    echo "Fiber 开始，接收: {$input}\n";
-
     $step1 = Fiber::suspend('第一步完成');
-    echo "Fiber 恢复，接收: {$step1}\n";
-
-    $step2 = Fiber::suspend('第二步完成');
-    echo "Fiber 恢复，接收: {$step2}\n";
-
-    return 'Fiber 结束';
+    return "最终结果: {$step1}";
 });
 
-// 启动
-$fiber->start('初始数据');
+$fiber->start();
+$result = $fiber->resume('恢复数据');
 
-// 挂起后恢复
-$result = $fiber->resume('第一次恢复');
-echo "恢复返回值: {$result}\n";
-
-// 再次恢复
-$result = $fiber->resume('第二次恢复');
-echo "最终返回值: {$result}\n";
+// Fiber 管理器
+$manager = new FiberManager();
+$manager->spawn('task1', fn() => compute1());
+$manager->spawn('task2', fn() => compute2());
+$manager->startAll();
+$results = $manager->collect();
 ```
+
+详见 [FIBER.md](docs/FIBER.md)
 
 ---
 
 ## 高级用法
 
-### 1. 带引导文件的 Runtime
-
-引导文件用于预加载自动加载器或其他配置：
+### 1. Sync 同步原语
 
 ```php
 <?php
-// bootstrap.php
-require_once __DIR__ . '/vendor/autoload.php';
+use Kode\Parallel\Sync\Mutex;
+use Kode\Parallel\Sync\Semaphore;
 
-// 预加载常用类
-class PreloadedClass {
-    public static function process($data) {
-        return strtoupper($data);
-    }
-}
+// Mutex - 互斥锁
+$mutex = new Mutex();
+$mutex->withLock(function() {
+    // 临界区代码
+});
 
-// 使用引导文件创建 Runtime
-$runtime = new Runtime(__DIR__ . '/bootstrap.php');
-
-$future = $runtime->run(fn() => PreloadedClass::process('hello'));
-echo $future->get(); // 输出: HELLO
+// Semaphore - 信号量（限流）
+$sem = new Semaphore(3); // 最多3个并发
+$sem->withResource(function() {
+    // 限流执行
+});
 ```
 
-### 2. 并行文件处理
+### 2. Pipe 管道
 
 ```php
 <?php
-require_once __DIR__ . '/vendor/autoload.php';
+use Kode\Parallel\Pipe\Pipe;
 
-use Kode\Parallel\Runtime\Runtime;
-use Kode\Parallel\Channel\Channel;
-
-$files = glob('/path/to/files/*.txt');
-$runtime = new Runtime();
-$results = Channel::make('results');
-
-// 并行处理文件
-$tasks = [];
-foreach (array_chunk($files, 10) as $chunk) {
-    $task = function () use ($chunk, $results) {
-        $chunkResults = [];
-        foreach ($chunk as $file) {
-            $chunkResults[] = [
-                'file' => $file,
-                'size' => filesize($file),
-                'lines' => count(file($file)),
-            ];
-        }
-        $results->send($chunkResults);
-    };
-    $runtime->run($task);
-}
-
-// 收集结果
-$allResults = [];
-while (!$results->isEmpty()) {
-    $allResults = array_merge($allResults, $results->recv());
-}
-
-print_r($allResults);
-$runtime->close();
+$pipe = Pipe::make('my_pipe');
+$pipe->write('Hello');
+$data = $pipe->read();
 ```
 
-### 3. 并行 HTTP 请求
+详见 [PIPE.md](docs/PIPE.md)
+
+### 3. CurlMulti 并行请求
 
 ```php
 <?php
-require_once __DIR__ . '/vendor/autoload.php';
+use Kode\Parallel\Curl\CurlMulti;
 
-use Kode\Parallel\Runtime\Runtime;
-
-$urls = [
-    'https://api.github.com/users/kodephp',
-    'https://api.github.com/users/php',
-    'https://api.github.com/users/facebook',
-];
-
-$runtime = new Runtime();
-
-// 并行发起请求
-$futures = [];
-foreach ($urls as $url) {
-    $futures[] = $runtime->run(
-        fn($args) => json_decode(file_get_contents($args['url']), true),
-        ['url' => $url]
-    );
-}
-
-// 等待所有请求完成
-$responses = [];
-foreach ($futures as $future) {
-    $responses[] = $future->get();
-}
-
-// 处理结果
-foreach ($responses as $data) {
-    echo "用户: {$data['login']}, 粉丝: {$data['followers']}\n";
-}
-
-$runtime->close();
+$curl = new CurlMulti();
+$curl->get('https://api.example.com/users');
+$curl->post('https://api.example.com/posts', ['title' => 'Hello']);
+$results = $curl->execute();
 ```
 
-### 4. 并行数据库处理
+详见 [CURL.md](docs/CURL.md)
+
+### 4. 生产者消费者模式
 
 ```php
 <?php
-require_once __DIR__ . '/vendor/autoload.php';
-
 use Kode\Parallel\Runtime\Runtime;
 use Kode\Parallel\Channel\Channel;
 
 $runtime = new Runtime();
-$inputChannel = Channel::make('db_input');
-$outputChannel = Channel::make('db_output');
+$channel = Channel::bounded(10);
 
-// 模拟数据库查询任务
-$dbTask = function () use ($inputChannel, $outputChannel) {
-    // 在实际场景中，这里会创建 PDO 连接
-    // $pdo = new PDO('mysql:host=localhost', 'user', 'pass');
+$producer = fn() => produce($channel);
+$consumer = fn() => consume($channel);
 
-    while (!$inputChannel->isEmpty()) {
-        $query = $inputChannel->recv();
-        // $result = $pdo->query($query);
-        $outputChannel->send([
-            'query' => $query,
-            'result' => "模拟结果: {$query}",
-        ]);
-    }
-};
-
-// 启动3个数据库工作进程
-for ($i = 0; $i < 3; $i++) {
-    $runtime->run($dbTask);
-}
-
-// 发送查询
-$queries = [
-    'SELECT * FROM users LIMIT 10',
-    'SELECT COUNT(*) FROM orders',
-    'SELECT * FROM products WHERE price > 100',
-    // ... 更多查询
-];
-
-foreach ($queries as $query) {
-    $inputChannel->send($query);
-}
-$inputChannel->close();
-
-// 收集结果
-$results = [];
-while (!$outputChannel->isEmpty()) {
-    $results[] = $outputChannel->recv();
-}
-
-print_r($results);
-$runtime->close();
+$runtime->run($producer);
+$runtime->run($consumer);
 ```
 
-### 5. 任务超时和重试
-
-```php
-<?php
-require_once __DIR__ . '/vendor/autoload.php';
-
-use Kode\Parallel\Runtime\Runtime;
-use Kode\Parallel\Exception\ParallelException;
-
-function runWithRetry(callable $task, int $maxRetries = 3, int $timeoutMs = 1000): mixed
-{
-    $runtime = new Runtime();
-    $lastException = null;
-
-    for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
-        $future = $runtime->run($task);
-
-        if ($future->wait($timeoutMs)) {
-            $runtime->close();
-            return $future->get();
-        }
-
-        $future->cancel();
-        echo "第 {$attempt} 次尝试超时，等待重试...\n";
-        usleep(100000 * $attempt); // 递增等待时间
-    }
-
-    $runtime->close();
-    throw new ParallelException("任务在 {$maxRetries} 次尝试后仍失败");
-}
-
-// 使用
-try {
-    $result = runWithRetry(
-        fn() => mightFailOperation(),
-        maxRetries: 3,
-        timeoutMs: 2000
-    );
-} catch (ParallelException $e) {
-    echo "最终失败: " . $e->getMessage() . "\n";
-}
-```
+详见 [ADVANCED_USAGE.md](docs/ADVANCED_USAGE.md)
 
 ---
 
 ## 性能压测
-
-### 测试环境
-
-- CPU: Apple M3 Pro
-- 内存: 18GB
-- PHP: 8.4
-- ext-parallel: 最新版本
-
-### 测试结果
 
 ```
 ========================================
      Kode/Parallel 性能压测报告
 ========================================
 
-1. Task 创建性能测试
-----------------------------------------
-   创建 10000 个 Task: 15.23 ms
-   平均每个: 1.52 μs
+Task 创建: 1.52 μs/个
+简单任务: 7,958 tasks/sec
+Channel通信: 22,000+ ops/sec
+Mutex操作: 4,200,000+ ops/sec
 
-2. 简单任务执行测试
-----------------------------------------
-   执行 1000 个简单任务: 125.67 ms
-   平均每个: 0.126 ms
-   吞吐量: 7,958 tasks/sec
-
-3. 计算密集型任务测试
-----------------------------------------
-   计算 1+2+...+100000 x 100 次: 892.34 ms
-   平均每次: 8.92 ms
-   吞吐量: 112.07 tasks/sec
-
-4. 多任务并行执行测试
-----------------------------------------
-   并行执行 10 个任务 (每个计算 1+2+...+50000):
-   耗时: 156.78 ms
-   平均每个任务: 15.68 ms
-   理论串行时间: 1567.8 ms
-   加速比: 10x (接近理想值)
-
-5. Channel 通信性能测试
-----------------------------------------
-   1000 次发送/接收: 45.23 ms
-   平均每次通信: 0.023 ms
-   吞吐量: 22,108 ops/sec
-
-6. 串行 vs 并行性能对比
-----------------------------------------
-   串行执行: 1256.89 ms
-   并行执行: 156.78 ms
-   加速比: 8.02x
-   并行效率: 80.2%
+并行加速比:
+  4任务: 3.21x (效率 80.3%)
+  8任务: 5.35x (效率 66.9%)
+ 10任务: 5.63x (效率 56.3%)
 ```
 
-### 性能对比表
-
-| 场景 | 串行耗时 | 并行耗时 | 加速比 | 效率 |
-|------|---------|---------|--------|------|
-| 5个计算任务 | 1256.89ms | 156.78ms | 8.02x | 80.2% |
-| 10个计算任务 | 2513.78ms | 278.45ms | 9.03x | 90.3% |
-| 100个简单任务 | 125.67ms | 12.57ms | 10.0x | 100% |
-
-### 性能优化建议
-
-1. **任务粒度控制**
-   - 小任务（<1ms）：避免并行，调度开销大于执行时间
-   - 中任务（1-100ms）：适合并行
-   - 大任务（>100ms）：并行效果显著
-
-2. **Channel 使用**
-   - 大数据传递：使用 Channel 而非闭包捕获
-   - 高频通信：使用有界限通道控制内存
-
-3. **Runtime 复用**
-   - 避免频繁创建/销毁 Runtime
-   - 预热 Runtime 用于关键路径
+详见 [BENCHMARK.md](docs/BENCHMARK.md)
 
 ---
 
 ## 最佳实践
 
-### 1. 任务设计
+### 任务设计
 
 ```php
-// ✅ 推荐：单一职责、计算密集
+// ✅ 推荐：简单、单一职责
 $task = new Task(fn($args) => processData($args['data']));
 
-// ✅ 推荐：数据处理流水线
-$task = new Task(fn($args) => array_map(fn($x) => transform($x), $args['data']));
-
-// ❌ 避免：复杂的业务逻辑
+// ❌ 避免：复杂业务逻辑
 $task = new Task(function($args) {
-    // 大量业务代码...
-    foreach ($items as $item) {
-        if ($item->status === 'pending') {
-            // 复杂判断和处理...
-        }
-    }
-    return $result;
+    // 大量代码...
 });
 ```
 
-### 2. 错误处理
+### 错误处理
 
 ```php
 try {
     $runtime = new Runtime('/invalid/path.php');
 } catch (ParallelException $e) {
-    echo "错误类型: " . get_class($e->getPrevious()) . "\n";
-    echo "错误信息: " . $e->getMessage() . "\n";
-    echo "上下文: " . json_encode($e->getContext()) . "\n";
+    echo "错误: " . $e->getMessage() . "\n";
 }
 ```
 
-### 3. 资源管理
+### 资源管理
 
 ```php
-// ✅ 方式一：使用后立即关闭
 $runtime = new Runtime();
 try {
     $result = $runtime->run($task)->get();
 } finally {
     $runtime->close();
 }
-
-// ✅ 方式二：使用完自动销毁
-(function() {
-    $runtime = new Runtime();
-    defer(fn() => $runtime->close());
-    // ... 使用 $runtime
-})();
-```
-
-### 4. 调试技巧
-
-```php
-// 添加日志
-$task = new Task(function($args) {
-    error_log("Task 开始: " . json_encode($args));
-    $result = processData($args);
-    error_log("Task 完成: " . json_encode($result));
-    return $result;
-});
-
-// 检查状态
-$runtime = new Runtime();
-$future = $runtime->run($task);
-
-echo "任务ID: " . $future->getId() . "\n";
-echo "完成状态: " . ($future->done() ? '是' : '否') . "\n";
-echo "取消状态: " . ($future->isCancelled() ? '是' : '否') . "\n";
 ```
 
 ---
 
 ## 常见问题
 
-### Q1: Task 中不能使用 yield 怎么办？
+### Q: Task 中不能使用 yield？
 
 ```php
-// ❌ 这样不行
-$task = new Task(function() {
-    yield 1;
-    yield 2;
-});
+// ❌ 不行
+$task = new Task(function() { yield 1; });
 
 // ✅ 改用返回数组
-$task = new Task(function() {
-    return [1, 2, 3];
-});
-
-// ✅ 或者在主线程中迭代
-$task = new Task(function() {
-    return function() {
-        yield 1;
-        yield 2;
-    };
-});
-$result = $runtime->run($task)->get();
-foreach ($result() as $value) {
-    echo $value . "\n";
-}
+$task = new Task(function() { return [1, 2, 3]; });
 ```
 
-### Q2: 如何传递大数据？
+### Q: 如何传递大数据？
 
 ```php
-// ❌ 闭包捕获大对象（每次复制）
-$largeArray = range(1, 1000000);
-$runtime->run(fn() => array_sum($largeArray)); // 复制开销大
-
 // ✅ 使用 Channel
 $channel = Channel::make();
-$runtime->run(fn($args) => $args['ch']->send(largeDataset()), ['ch' => $channel]);
-$runtime->run(fn($args) => processData($args['ch']->recv()), ['ch' => $channel]);
+$runtime->run(fn($args) => $args['ch']->send($data), ['ch' => $channel]);
 ```
 
-### Q3: Runtime 之间共享数据？
+### Q: Fiber 和 Thread 的区别？
 
-```php
-// ❌ Runtime 之间不能直接共享
-$shared = [];
-$runtime1 = new Runtime();
-$runtime2 = new Runtime();
+| 特性 | Fiber | Thread |
+|------|-------|--------|
+| 调度 | 用户态 | 内核态 |
+| 切换开销 | 微秒级 | 毫秒级 |
+| 共享内存 | 不共享 | 共享 |
 
-// ✅ 使用 Channel 通信
-$channel = Channel::make();
+---
 
-$runtime1->run(fn($args) => $args['ch']->send($data), ['ch' => $channel]);
-$runtime2->run(fn($args) => $data = $args['ch']->recv(), ['ch' => $channel]);
-```
+## 文档索引
 
-### Q4: 如何处理任务异常？
+| 文档 | 内容 |
+|------|------|
+| [README](README.md) | 项目概述和快速开始 |
+| [DEVELOPMENT.md](docs/DEVELOPMENT.md) | 开发指南和 API 参考 |
+| [FIBER.md](docs/FIBER.md) | Fiber 协程详解 |
+| [PIPE.md](docs/PIPE.md) | Pipe 管道详解 |
+| [CURL.md](docs/CURL.md) | CurlMulti 并行请求 |
+| [ADVANCED_USAGE.md](docs/ADVANCED_USAGE.md) | 高级用法和案例 |
+| [PTHREADS_COMPARISON.md](docs/PTHREADS_COMPARISON.md) | 与 pthreads 对比 |
+| [BENCHMARK.md](docs/BENCHMARK.md) | 完整性能压测数据 |
 
-```php
-$future = $runtime->run(fn() => throw new Exception('任务失败'));
+---
 
-try {
-    $result = $future->get();
-} catch (ParallelException $e) {
-    $previous = $e->getPrevious();
-    echo "原始错误: " . $previous->getMessage() . "\n";
-}
-```
+## 更新日志
+
+### v1.2.0 (2026-03-19)
+
+- ✨ 添加 PHP 8.5 特性兼容（管道操作符、Clone With）
+- ✨ 添加 Fiber 协程完整支持
+- ✨ 添加 Sync 同步原语（Mutex、Semaphore、Cond、Barrier）
+- ✨ 添加 Pipe 管道
+- ✨ 添加 CurlMulti 并行请求
+- ✨ 添加详细文档（FIBER、PIPE、CURL）
+- ✅ 完整单元测试
+
+### v1.1.0
+
+- 添加 Sync 原语
+- 添加 pthreads 对比文档
+- 添加高级用法文档
+
+### v1.0.0
+
+- 初始发布
+
+---
 
 ## 许可证
 
-本项目采用 Apache-2.0 许可证，详情请参阅 [LICENSE](LICENSE) 文件。
-
-## 贡献
-
-欢迎提交 Issue 和 Pull Request！
+Apache-2.0
 
 ## 相关链接
 
 - [PHP parallel 扩展官方文档](https://www.php.net/manual/zh/book.parallel.php)
 - [KodePHP 官方仓库](https://github.com/kodephp)
-- [KodePHP 官方网站](https://kodephp.com)
+- [kode/fibers 包](https://github.com/kodephp/fibers)
+- [PHP 8.5 新特性](https://www.php.net/releases/8.5/zh.php)

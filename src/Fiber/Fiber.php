@@ -7,22 +7,41 @@ namespace Kode\Parallel\Fiber;
 use Kode\Parallel\Exception\ParallelException;
 
 /**
- * Fiber 协程包装类
+ * Fiber 协程封装类
  *
  * 包装 PHP 内置 Fiber，提供更友好的接口和错误处理。
  * 支持 PHP 8.1+ 的 Fiber 特性。
  *
+ * 可以与 kode/fibers 包配合使用以获得更多功能：
+ * - Fiber 池化
+ * - 超时控制
+ * - 错误重试
+ * - 上下文传递
+ *
  * @since PHP 8.1
+ * @see https://github.com/kodephp/fibers
  */
 final class Fiber
 {
     private \Fiber $fiber;
     private bool $started = false;
     private mixed $returnValue = null;
+    private readonly string $id;
 
     public function __construct(callable $callback)
     {
         $this->fiber = new \Fiber($callback);
+        $this->id = bin2hex(random_bytes(8));
+    }
+
+    /**
+     * 创建 Fiber
+     *
+     * @param callable $callback Fiber 执行函数
+     */
+    public static function create(callable $callback): static
+    {
+        return new static($callback);
     }
 
     /**
@@ -126,13 +145,29 @@ final class Fiber
     }
 
     /**
+     * 检查 Fiber 是否正在运行
+     */
+    public function isRunning(): bool
+    {
+        return $this->fiber->isRunning();
+    }
+
+    /**
      * 获取 Fiber 返回值
      *
-     * @return mixed|FiberError|null
+     * @return mixed|\Throwable|null
      */
     public function getReturnValue(): mixed
     {
         return $this->returnValue;
+    }
+
+    /**
+     * 获取 Fiber ID
+     */
+    public function getId(): string
+    {
+        return $this->id;
     }
 
     /**
@@ -159,5 +194,44 @@ final class Fiber
     public function getError(): ?\Throwable
     {
         return $this->returnValue instanceof \Throwable ? $this->returnValue : null;
+    }
+
+    /**
+     * 执行并等待 Fiber 完成
+     *
+     * @param mixed ...$args 传递给 Fiber 的参数
+     * @return mixed Fiber 返回值
+     */
+    public function run(mixed ...$args): mixed
+    {
+        if (!$this->started) {
+            $this->start(...$args);
+        }
+
+        while (!$this->isTerminated() && $this->isSuspended()) {
+            $this->resume(null);
+        }
+
+        if ($this->hasError()) {
+            throw $this->getError();
+        }
+
+        return $this->getReturnValue();
+    }
+
+    /**
+     * 转换为字符串表示
+     */
+    public function __toString(): string
+    {
+        $status = match (true) {
+            !$this->started => 'created',
+            $this->isTerminated() => 'terminated',
+            $this->isSuspended() => 'suspended',
+            $this->isRunning() => 'running',
+            default => 'unknown',
+        };
+
+        return sprintf('Fiber(id=%s, status=%s)', $this->id, $status);
     }
 }
