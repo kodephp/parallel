@@ -22,9 +22,6 @@ Thumbs.db
 # Build
 /build/
 
-# Documentation
-/docs/
-
 # Test
 /tests/coverage/
 

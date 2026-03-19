@@ -12,7 +12,7 @@
         "并发"
     ],
     "type": "library",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "license": "Apache-2.0",
     "authors": [
         {
@@ -36,7 +36,8 @@
         },
         "files": [
             "src/functions.php",
-            "src/Channel/functions.php"
+            "src/Channel/functions.php",
+            "src/Sync/functions.php"
         ]
     },
     "autoload-dev": {
