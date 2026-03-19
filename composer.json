@@ -1,6 +1,6 @@
 {
     "name": "kode/parallel",
-    "description": "适用于 PHP 8.1+ 的高性能并行并发扩展库，提供 Runtime、Task、Future、Channel、Events、Fiber、Sync、Pipe、CurlMulti 等完整功能，支持 PHP 8.5 新特性",
+    "description": "适用于 PHP 8.1+ 的高性能并行并发扩展库，支持 Runtime、Task、Future、Channel、Events、Fiber、Sync、Cluster 等完整功能，提供跨机器分布式任务执行能力",
     "keywords": [
         "parallel",
         "concurrency",
@@ -8,14 +8,18 @@
         "multithreading",
         "fiber",
         "coroutine",
+        "cluster",
+        "distributed",
         "kode",
         "高性能",
         "并行",
         "并发",
-        "协程"
+        "协程",
+        "分布式",
+        "跨机器"
     ],
     "type": "library",
-    "version": "1.2.1",
+    "version": "1.3.0",
     "license": "Apache-2.0",
     "authors": [
         {
@@ -26,12 +30,10 @@
     ],
     "require": {
         "php": ">=8.1",
-        "ext-parallel": "*"
-    },
-    "suggest": {
-        "kode/fibers": "增强的 Fiber 纤程支持，提供池化、超时、上下文传递等功能",
-        "kode/context": "请求上下文传递支持",
-        "kode/facade": "门面模式支持"
+        "ext-parallel": "*",
+        "kode/fibers": "^1.0",
+        "kode/context": "^1.0",
+        "kode/facade": "^1.0"
     },
     "require-dev": {
         "phpunit/phpunit": "^10.0"
@@ -44,7 +46,8 @@
             "src/functions.php",
             "src/Channel/functions.php",
             "src/Sync/functions.php",
-            "src/Util/Php85.php"
+            "src/Util/Php85.php",
+            "src/Util/Installation.php"
         ]
     },
     "autoload-dev": {
@@ -58,7 +61,9 @@
         "sort-packages": true
     },
     "scripts": {
-        "test": "phpunit"
+        "test": "phpunit",
+        "check": "php -r \"require 'vendor/autoload.php'; \\Kode\\Parallel\\Util\\Installation::check(); echo 'Installation OK\\n';\"",
+        "info": "php -r \"print_r(\\Kode\\Parallel\\Util\\Installation::getInfo());\""
     },
     "extra": {
         "branch-alias": {
