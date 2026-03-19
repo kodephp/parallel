@@ -1,0 +1,60 @@
+{
+    "name": "kode/parallel",
+    "description": "适用于 PHP 8.1+ 的高性能并行并发扩展，基于 PHP parallel 扩展实现，提供 Runtime、Task、Future、Channel、Events 等核心功能",
+    "keywords": [
+        "parallel",
+        "concurrency",
+        "async",
+        "multithreading",
+        "kode",
+        "高性能",
+        "并行",
+        "并发"
+    ],
+    "type": "library",
+    "version": "1.0.0",
+    "license": "Apache-2.0",
+    "authors": [
+        {
+            "name": "KodePHP",
+            "email": "contact@kodephp.com",
+            "homepage": "https://github.com/kodephp"
+        }
+    ],
+    "require": {
+        "php": ">=8.1",
+        "ext-parallel": "*",
+        "kode/context": "^1.0",
+        "kode/facade": "^1.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Kode\\Parallel\\": "src/"
+        },
+        "files": [
+            "src/functions.php",
+            "src/Channel/functions.php"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Kode\\Parallel\\Tests\\": "tests/"
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "config": {
+        "sort-packages": true
+    },
+    "scripts": {
+        "test": "phpunit"
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "1.x-dev"
+        }
+    }
+}
