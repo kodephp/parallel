@@ -1,0 +1,47 @@
+# Composer
+/vendor/
+
+# PHP
+*.phpo
+*.phar
+.phpunit.result.cache
+phpunit.xml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.trae/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+/build/
+
+# Documentation
+/docs/
+
+# Test
+/tests/coverage/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# Cache
+/cache/
+/var/
+
+#平行扩展编译产物
+*.so
+*.dll
+*.exe
