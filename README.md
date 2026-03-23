@@ -4,7 +4,7 @@
 
 [![PHP Version](https://img.shields.io/badge/PHP-%3E%3D8.1-blue)](https://php.net)
 [![License](https://img.shields.io/badge/License-Apache--2.0-green)](LICENSE)
-[![Package Version](https://img.shields.io/badge/Version-1.5.2-orange)](composer.json)
+[![Package Version](https://img.shields.io/badge/Version-1.5.3-orange)](composer.json)
 
 ## 目录
 
@@ -672,10 +672,3 @@ Apache-2.0
 - [KodePHP 官方仓库](https://github.com/kodephp)
 - [kode/fibers 包](https://github.com/kodephp/fibers)
 - [PHP 8.5 新特性](https://www.php.net/releases/8.5/zh.php)
-
-
-完善本地的项目规则文件，这个不上传仓库中。。
-优化升级，对比 swoole的多线程，数据相关压测。如使用 fiber 则应该使用 kode/fibers 这个吧。 
- `https://wiki.swoole.com/zh-cn/#/thread/thread` `https://wiki.swoole.com/zh-cn/#/thread/pool` `https://wiki.swoole.com/zh-cn/#/thread/info` `https://wiki.swoole.com/zh-cn/#/thread/map` `https://wiki.swoole.com/zh-cn/#/thread/arraylist` `https://wiki.swoole.com/zh-cn/#/thread/queue` `https://wiki.swoole.com/zh-cn/#/thread/barrier` `https://wiki.swoole.com/zh-cn/#/thread/transfer` 
-对比下，取其优点 完善本包。。本包让更健壮强大的架构和代码。
-测试无误后，更新版本号，上传仓库和版本，备注说明简洁明了。
