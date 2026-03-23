@@ -4,7 +4,7 @@
 
 [![PHP Version](https://img.shields.io/badge/PHP-%3E%3D8.1-blue)](https://php.net)
 [![License](https://img.shields.io/badge/License-Apache--2.0-green)](LICENSE)
-[![Package Version](https://img.shields.io/badge/Version-1.5.1-orange)](composer.json)
+[![Package Version](https://img.shields.io/badge/Version-1.5.2-orange)](composer.json)
 
 ## 目录
 
