@@ -4,7 +4,7 @@
 
 [![PHP Version](https://img.shields.io/badge/PHP-%3E%3D8.1-blue)](https://php.net)
 [![License](https://img.shields.io/badge/License-Apache--2.0-green)](LICENSE)
-[![Package Version](https://img.shields.io/badge/Version-1.3.1-orange)](composer.json)
+[![Package Version](https://img.shields.io/badge/Version-1.4.0-orange)](composer.json)
 
 ## 目录
 
@@ -73,7 +73,7 @@
 | **Future** | 异步任务返回值访问 |
 | **Channel** | Task 间双向通信，支持有/无界限通道 |
 | **Events** | 事件循环驱动 |
-| **Fiber** | PHP Fiber 协程封装（PHP 8.1+） |
+| **Fiber** | PHP Fiber 协程封装（基于 kode/fibers） |
 | **Sync** | 同步原语：Mutex、Semaphore、Cond、Barrier |
 | **Pipe** | 进程间通信管道 |
 | **CurlMulti** | 并行 HTTP 请求封装 |
@@ -81,6 +81,11 @@
 | **TcpNodeTransport** | TCP 节点传输层（跨机器） |
 | **ClusterManager** | 集群管理器，支持主节点选举、负载均衡 |
 | **ClusterServer** | 集群服务器（任务执行器） |
+| **ThreadPool** | 线程池（Swoole 风格） |
+| **ThreadMap** | 线程安全 Map（Swoole Table 风格） |
+| **ThreadQueue** | 线程安全队列 |
+| **ThreadBarrier** | 线程屏障 |
+| **ProcessPool** | 进程池（基于 pcntl） |
 | **Util** | PHP 8.5 兼容工具：管道操作符、Clone With 等 |
 | **Installation** | 自动检测 ext-parallel 并提供安装提示 |
 
@@ -648,6 +653,7 @@ $runtime->run(fn($args) => $args['ch']->send($data), ['ch' => $channel]);
 | [ADVANCED_USAGE.md](docs/ADVANCED_USAGE.md) | 高级用法和案例 |
 | [PTHREADS_COMPARISON.md](docs/PTHREADS_COMPARISON.md) | 与 pthreads 对比 |
 | [PCNTL_COMPARISON.md](docs/PCNTL_COMPARISON.md) | 与 pcntl 对比 |
+| [SWOOLE_COMPARISON.md](docs/SWOOLE_COMPARISON.md) | 与 Swoole 对比 |
 | [BENCHMARK.md](docs/BENCHMARK.md) | 完整性能压测数据 |
 
 ---
@@ -663,3 +669,10 @@ Apache-2.0
 - [KodePHP 官方仓库](https://github.com/kodephp)
 - [kode/fibers 包](https://github.com/kodephp/fibers)
 - [PHP 8.5 新特性](https://www.php.net/releases/8.5/zh.php)
+
+
+完善本地的项目规则文件，这个不上传仓库中。。
+优化升级，对比 swoole的多线程，数据相关压测。如使用 fiber 则应该使用 kode/fibers 这个吧。 
+ `https://wiki.swoole.com/zh-cn/#/thread/thread` `https://wiki.swoole.com/zh-cn/#/thread/pool` `https://wiki.swoole.com/zh-cn/#/thread/info` `https://wiki.swoole.com/zh-cn/#/thread/map` `https://wiki.swoole.com/zh-cn/#/thread/arraylist` `https://wiki.swoole.com/zh-cn/#/thread/queue` `https://wiki.swoole.com/zh-cn/#/thread/barrier` `https://wiki.swoole.com/zh-cn/#/thread/transfer` 
+对比下，取其优点 完善本包。。本包让更健壮强大的架构和代码。
+测试无误后，更新版本号，上传仓库和版本，备注说明简洁明了。
