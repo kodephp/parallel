@@ -85,7 +85,6 @@
 | **ThreadMap** | 线程安全 Map（Swoole Table 风格） |
 | **ThreadQueue** | 线程安全队列 |
 | **ThreadBarrier** | 线程屏障 |
-| **ProcessPool** | 进程池（基于 pcntl） |
 | **Util** | PHP 8.5 兼容工具：管道操作符、Clone With 等 |
 | **Installation** | 自动检测 ext-parallel 并提供安装提示 |
 
