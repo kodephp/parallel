@@ -4,7 +4,7 @@
 
 [![PHP Version](https://img.shields.io/badge/PHP-%3E%3D8.1-blue)](https://php.net)
 [![License](https://img.shields.io/badge/License-Apache--2.0-green)](LICENSE)
-[![Package Version](https://img.shields.io/badge/Version-1.4.0-orange)](composer.json)
+[![Package Version](https://img.shields.io/badge/Version-1.5.0-orange)](composer.json)
 
 ## 目录
 
@@ -87,6 +87,10 @@
 | **ThreadBarrier** | 线程屏障 |
 | **Util** | PHP 8.5 兼容工具：管道操作符、Clone With 等 |
 | **Installation** | 自动检测 ext-parallel 并提供安装提示 |
+| **集成组件** | **kode 生态集成** |
+| **ParallelRuntimeAdapter** | kode/runtime 运行时适配器 |
+| **FiberCoordinator** | Fiber 协调器（集成 kode/fibers） |
+| **ContextualRuntime** | 上下文感知运行时（集成 kode/context） |
 
 ---
 

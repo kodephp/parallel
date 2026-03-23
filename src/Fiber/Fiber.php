@@ -137,6 +137,14 @@ final class Fiber
     }
 
     /**
+     * 检查 Fiber 是否已完成（启动且终止）
+     */
+    public function isComplete(): bool
+    {
+        return $this->started && $this->isTerminated();
+    }
+
+    /**
      * 检查 Fiber 是否挂起
      */
     public function isSuspended(): bool
