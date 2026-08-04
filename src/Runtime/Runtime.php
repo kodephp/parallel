@@ -4,103 +4,128 @@ declare(strict_types=1);
 
 namespace Kode\Parallel\Runtime;
 
+use Kode\Parallel\Engine\EngineFactory;
+use Kode\Parallel\Engine\EngineInterface;
 use Kode\Parallel\Exception\ParallelException;
+use Kode\Parallel\Future\FutureInterface;
 use Kode\Parallel\Task\Task;
-use Kode\Parallel\Future\Future;
 
 /**
- * Runtime 表示 PHP 解释器线程
+ * Runtime 表示一个并行执行上下文
  *
- * 将可选的 bootstrap 文件传递给 Runtime::__construct() 可用于配置 Runtime，
- * 这通常是自动加载器或者一些其它预加载程序：引导文件将在任何任务执行之前加载。
+ * 传入可选的 bootstrap 文件可在任务执行前完成预加载（通常是自动加载器）。
+ * Runtime 采用 FIFO 调度，任务按提交顺序执行。
  *
- * 构造之后，Runtime 在 PHP 对象正常作用域规则关闭、杀死或者销毁之前一直可用。
- * Runtime::run() 允许程序员安排并行执行的任务。Runtime 有 FIFO 调度，
- * 任务将按照调度的顺序执行。
+ * 自 1.6.0 起 Runtime 构建在引擎抽象之上：
+ * - 安装了 ext-parallel → 使用真线程（parallel 引擎）
+ * - 未安装扩展但有 pcntl → 自动降级为多进程（process 引擎）
+ * - 其余环境 → 同步执行（sync 引擎），语义保持一致
+ *
+ * 可通过构造参数或环境变量 KODE_PARALLEL_ENGINE 强制指定引擎。
  */
 final class Runtime
 {
-    private ?\parallel\Runtime $runtime = null;
+    private ?EngineInterface $engine = null;
     private readonly ?string $bootstrap;
     private bool $running = false;
+    private int $taskCount = 0;
 
-    public function __construct(?string $bootstrap = null)
+    /**
+     * @param string|null $bootstrap 引导文件路径
+     * @param string|null $engine 引擎名（parallel / process / sync），null 表示自动探测
+     */
+    public function __construct(?string $bootstrap = null, ?string $engine = null)
     {
-        $this->bootstrap = $bootstrap;
-        $this->initialize();
-    }
-
-    private function initialize(): void
-    {
-        try {
-            $this->runtime = $this->bootstrap !== null
-                ? new \parallel\Runtime($this->bootstrap)
-                : new \parallel\Runtime();
-        } catch (\parallel\Runtime\Error\Bootstrap $e) {
+        if ($bootstrap !== null && !is_file($bootstrap)) {
             throw new ParallelException(
-                '引导文件加载失败: ' . $e->getMessage(),
-                (int)$e->getCode(),
-                $e,
-                ['bootstrap' => $this->bootstrap]
-            );
-        } catch (\parallel\Runtime\Error $e) {
-            throw new ParallelException(
-                'Runtime 初始化失败: ' . $e->getMessage(),
-                (int)$e->getCode(),
-                $e
+                "引导文件不存在: {$bootstrap}",
+                0,
+                null,
+                ['bootstrap' => $bootstrap]
             );
         }
+
+        $this->bootstrap = $bootstrap;
+        $this->engine = EngineFactory::create($engine, $bootstrap);
     }
 
     /**
      * 执行任务
      *
-     * @param Task|callable $task 任务闭包
-     * @param array<string, mixed> $args 任务参数
-     * @return Future 未来对象，用于获取任务返回值
+     * @param Task|callable $task 任务，签名为 fn(array $args): mixed
+     * @param array<array-key, mixed> $args 任务参数
+     * @throws ParallelException Runtime 已关闭或任务提交失败
      */
-    public function run(Task|callable $task, array $args = []): Future
+    public function run(Task|callable $task, array $args = []): FutureInterface
     {
-        if ($this->runtime === null) {
-            throw new ParallelException('Runtime 未正确初始化');
+        if ($this->engine === null) {
+            throw new ParallelException('Runtime 已关闭，无法执行任务');
         }
 
         $closure = $task instanceof Task
             ? $task->getClosure()
             : \Closure::fromCallable($task);
 
+        $this->running = true;
+
         try {
-            $this->running = true;
-            $future = $this->runtime->run($closure, [$args]);
+            $future = $this->engine->submit($closure, $args);
+            $this->taskCount++;
+
+            return $future;
+        } finally {
             $this->running = false;
-            return new Future($future);
-        } catch (\parallel\Runtime\Error\Bootstrap $e) {
-            throw new ParallelException(
-                '任务执行失败 - 引导错误: ' . $e->getMessage(),
-                (int)$e->getCode(),
-                $e
-            );
-        } catch (\parallel\Runtime\Error\Task $e) {
-            throw new ParallelException(
-                '任务执行失败 - 任务错误: ' . $e->getMessage(),
-                (int)$e->getCode(),
-                $e
-            );
-        } catch (\parallel\Runtime\Error $e) {
-            throw new ParallelException(
-                '任务执行失败: ' . $e->getMessage(),
-                (int)$e->getCode(),
-                $e
-            );
         }
     }
 
     /**
-     * 检查 Runtime 是否正在运行任务
+     * 批量执行任务
+     *
+     * @param iterable<array-key, Task|callable> $tasks
+     * @param array<array-key, mixed> $args 所有任务共用的参数
+     * @return array<array-key, FutureInterface>
+     */
+    public function runAll(iterable $tasks, array $args = []): array
+    {
+        $futures = [];
+
+        foreach ($tasks as $key => $task) {
+            $futures[$key] = $this->run($task, $args);
+        }
+
+        return $futures;
+    }
+
+    /**
+     * 当前使用的引擎名
+     */
+    public function getEngineName(): string
+    {
+        return $this->engine?->name() ?? 'closed';
+    }
+
+    /**
+     * 引擎是否真正并行执行
+     */
+    public function isConcurrent(): bool
+    {
+        return $this->engine?->isConcurrent() ?? false;
+    }
+
+    /**
+     * 是否正在提交任务
      */
     public function isRunning(): bool
     {
         return $this->running;
+    }
+
+    /**
+     * 已提交任务总数
+     */
+    public function getTaskCount(): int
+    {
+        return $this->taskCount;
     }
 
     /**
@@ -116,8 +141,17 @@ final class Runtime
      */
     public function close(): void
     {
-        $this->runtime = null;
+        $this->engine?->close();
+        $this->engine = null;
         $this->running = false;
+    }
+
+    /**
+     * 是否已关闭
+     */
+    public function isClosed(): bool
+    {
+        return $this->engine === null;
     }
 
     public function __destruct()

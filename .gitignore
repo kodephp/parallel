@@ -5,15 +5,20 @@
 *.phpo
 *.phar
 .phpunit.result.cache
+.phpunit.cache/
 phpunit.xml
 
-# IDE
+# IDE / AI 工作区（仅本地）
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
 .trae/
+.workbuddy/
+
+# 本地变更记录（不入库）
+CHANGELOG.md
 
 # OS
 .DS_Store
@@ -38,7 +43,7 @@ logs/
 /cache/
 /var/
 
-#平行扩展编译产物
+# 并行扩展编译产物
 *.so
 *.dll
 *.exe

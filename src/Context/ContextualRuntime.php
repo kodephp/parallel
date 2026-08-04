@@ -33,7 +33,7 @@ final class ContextualRuntime
         $this->spanId = $this->generateSpanId();
     }
 
-    public function run(callable $task, array $args = []): \Kode\Parallel\Future\Future
+    public function run(callable $task, array $args = []): \Kode\Parallel\Future\FutureInterface
     {
         $context = $this->captureContext();
 

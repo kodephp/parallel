@@ -45,9 +45,13 @@ final class ParallelRuntimeAdapter implements RuntimeInterface
 
     public function createChannel(int $capacity = 0): ChannelInterface
     {
-        $channel = Channel::make('runtime_channel_' . uniqid(), $capacity);
+        $name = 'runtime_channel_' . bin2hex(random_bytes(8));
+        $channel = $capacity > 0
+            ? Channel::bounded($capacity, $name)
+            : Channel::make($name);
         $this->channels[] = $channel;
-        return new ParallelChannelAdapter($channel);
+
+        return new ParallelChannelAdapter($channel, $capacity);
     }
 
     public function defer(callable $callback): void
@@ -96,9 +100,9 @@ final class ParallelRuntimeAdapter implements RuntimeInterface
  */
 final class ParallelFutureHandle
 {
-    private \Kode\Parallel\Future\Future $future;
+    private \Kode\Parallel\Future\FutureInterface $future;
 
-    public function __construct(\Kode\Parallel\Future\Future $future)
+    public function __construct(\Kode\Parallel\Future\FutureInterface $future)
     {
         $this->future = $future;
     }
@@ -129,10 +133,12 @@ final class ParallelFutureHandle
 final class ParallelChannelAdapter implements ChannelInterface
 {
     private \Kode\Parallel\Channel\Channel $channel;
+    private int $capacity;
 
-    public function __construct(\Kode\Parallel\Channel\Channel $channel)
+    public function __construct(\Kode\Parallel\Channel\Channel $channel, int $capacity = 0)
     {
         $this->channel = $channel;
+        $this->capacity = $capacity;
     }
 
     public function push(mixed $data, ?float $timeout = null): bool
@@ -158,12 +164,12 @@ final class ParallelChannelAdapter implements ChannelInterface
 
     public function isFull(): bool
     {
-        return false;
+        return $this->channel->isFull();
     }
 
     public function getCapacity(): int
     {
-        return 0;
+        return $this->capacity;
     }
 
     public function getLength(): int

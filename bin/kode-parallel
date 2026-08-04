@@ -1,0 +1,92 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+/**
+ * kode/parallel 命令行工具
+ *
+ * 用法：
+ *   kode-parallel doctor   环境诊断（引擎可用性、扩展、CPU）
+ *   kode-parallel info     以 JSON 输出环境信息
+ *   kode-parallel bench    快速跑一遍当前引擎的并行吞吐
+ */
+
+use Kode\Parallel\Engine\EngineFactory;
+use Kode\Parallel\Pool\WorkerPool;
+use Kode\Parallel\Util\Installation;
+use Kode\Parallel\Util\Sys;
+
+$autoloads = [
+    __DIR__ . '/../vendor/autoload.php',
+    __DIR__ . '/../../../autoload.php',
+];
+
+$loaded = false;
+
+foreach ($autoloads as $autoload) {
+    if (is_file($autoload)) {
+        require_once $autoload;
+        $loaded = true;
+        break;
+    }
+}
+
+if (!$loaded) {
+    fwrite(STDERR, "未找到 composer autoload，请先执行 composer install\n");
+    exit(1);
+}
+
+$command = $argv[1] ?? 'doctor';
+
+switch ($command) {
+    case 'doctor':
+        echo Installation::report();
+
+        try {
+            Installation::check();
+            echo '自检结果    : 通过' . PHP_EOL;
+            exit(0);
+        } catch (Throwable $e) {
+            echo '自检结果    : 失败 - ' . $e->getMessage() . PHP_EOL;
+            exit(1);
+        }
+
+        // no break
+    case 'info':
+        echo json_encode(
+            Installation::getInfo() + ['system' => Sys::info()],
+            JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+        ), PHP_EOL;
+        exit(0);
+
+    case 'bench':
+        $jobs = max(1, (int) ($argv[2] ?? 8));
+        $engine = EngineFactory::detect();
+        $pool = new WorkerPool();
+
+        $start = hrtime(true);
+        $results = $pool->map(range(1, $jobs), static function (int $n): int {
+            usleep(100_000);
+
+            return $n * $n;
+        });
+        $elapsed = (hrtime(true) - $start) / 1_000_000;
+        $pool->close();
+
+        printf(
+            "引擎: %s | 任务数: %d | 并发: %d | 耗时: %.2f ms | 串行预估: %d ms%s",
+            $engine,
+            $jobs,
+            Sys::recommendedConcurrency(),
+            $elapsed,
+            $jobs * 100,
+            PHP_EOL
+        );
+        printf("结果校验: %s%s", array_sum($results) === array_sum(array_map(static fn(int $n): int => $n * $n, range(1, $jobs))) ? 'OK' : 'FAILED', PHP_EOL);
+        exit(0);
+
+    default:
+        fwrite(STDERR, "未知命令: {$command}\n可用命令: doctor | info | bench\n");
+        exit(1);
+}

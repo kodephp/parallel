@@ -12,7 +12,7 @@ use Kode\Parallel\Exception\ParallelException;
  * Future 代表一个异步任务的未来结果，可以通过 poll() 方法检查任务是否完成，
  * 或者通过 get() 方法获取任务返回值（如果任务未完成会阻塞等待）。
  */
-final class Future
+final class Future implements FutureInterface
 {
     private \parallel\Future $future;
     private bool $cancelled = false;
@@ -29,6 +29,7 @@ final class Future
      *
      * @return bool 任务完成返回 true，否则返回 false
      */
+    #[\Override]
     public function done(): bool
     {
         return $this->cancelled || $this->future->done();
@@ -42,6 +43,7 @@ final class Future
      * @return mixed 任务返回值
      * @throws ParallelException 如果任务被取消或执行失败
      */
+    #[\Override]
     public function get(): mixed
     {
         if ($this->cancelled) {
@@ -64,6 +66,7 @@ final class Future
      *
      * @return mixed|null 任务完成返回返回值，未完成返回 null
      */
+    #[\Override]
     public function getOrNull(): mixed
     {
         return $this->done() ? $this->get() : null;
@@ -75,6 +78,7 @@ final class Future
      * @param int $timeoutMs 超时时间（毫秒），0 表示无限等待
      * @return bool 任务完成返回 true，超时返回 false
      */
+    #[\Override]
     public function wait(int $timeoutMs = 0): bool
     {
         if ($this->cancelled) {
@@ -108,6 +112,7 @@ final class Future
      *
      * @return bool 取消成功返回 true
      */
+    #[\Override]
     public function cancel(): bool
     {
         if ($this->done()) {
@@ -121,6 +126,7 @@ final class Future
     /**
      * 检查任务是否被取消
      */
+    #[\Override]
     public function isCancelled(): bool
     {
         return $this->cancelled;
@@ -129,6 +135,7 @@ final class Future
     /**
      * 获取任务ID
      */
+    #[\Override]
     public function getId(): string
     {
         return $this->id;

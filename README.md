@@ -1,15 +1,17 @@
 # Kode/Parallel
 
-高性能 PHP 并行并发扩展库，基于 PHP `ext-parallel` 实现，为 PHP 8.1+ 提供简洁、健壮的并行编程接口。**支持跨机器分布式任务执行**。
+高性能 PHP 并行并发库，为 PHP 8.3+ 提供简洁、健壮的并行编程接口。**多引擎自动降级**：有 `ext-parallel` 用真线程，没有扩展也能靠多进程跑并行。**支持跨机器分布式任务执行**。
 
-[![PHP Version](https://img.shields.io/badge/PHP-%3E%3D8.1-blue)](https://php.net)
+[![PHP Version](https://img.shields.io/badge/PHP-%3E%3D8.3-blue)](https://php.net)
 [![License](https://img.shields.io/badge/License-Apache--2.0-green)](LICENSE)
-[![Package Version](https://img.shields.io/badge/Version-1.5.3-orange)](composer.json)
+[![Package Version](https://img.shields.io/badge/Version-1.6.0-orange)](composer.json)
+[![Engines](https://img.shields.io/badge/Engines-parallel%20%7C%20process%20%7C%20sync-purple)](docs/ENGINE.md)
 
 ## 目录
 
 - [简介](#简介)
 - [功能特性](#功能特性)
+- [执行引擎](#执行引擎)
 - [系统要求](#系统要求)
 - [安装](#安装)
 - [快速开始](#快速开始)
@@ -26,7 +28,9 @@
 
 ## 简介
 
-`kode/parallel` 是适用于 PHP 8.1+ 的高性能并行并发扩展库。该库基于 PHP 官方的 `ext-parallel` 扩展构建，提供了更高级别的面向对象 API、完整的中文文档支持，以及 PHP 8.5 新特性的前向兼容实现。
+`kode/parallel` 是适用于 PHP 8.3+ 的高性能并行并发库，提供面向对象的高层 API、完整中文文档，以及 PHP 8.5 新特性的前向兼容实现。
+
+自 **v1.6.0** 起引入引擎抽象层：同一套代码在装了 `ext-parallel` 的机器上跑真线程，在只有 `pcntl` 的机器上自动降级为多进程，在 Windows 等受限环境下退化为同步执行——**扩展从硬依赖变为可选加速项**。
 
 ### 架构模型：多线程 + 分布式
 
@@ -56,7 +60,8 @@
 
 | 层级 | 能力 | 组件 |
 |------|------|------|
-| **本地并行** | 多线程执行 | Runtime, Task, Future, Channel, Events |
+| **执行引擎** | 多引擎自动降级 | EngineFactory, ParallelEngine, ProcessEngine, SyncEngine |
+| **本地并行** | 多线程 / 多进程执行 | Runtime, Task, Future, Futures, WorkerPool, Channel, Events |
 | **同步原语** | 互斥/信号量 | Mutex, Semaphore, Cond, Barrier |
 | **协程支持** | Fiber 协程 | Fiber, FiberManager |
 | **跨机器** | 分布式集群 | Node, TcpNodeTransport, ClusterManager, ClusterServer |
@@ -68,9 +73,12 @@
 
 | 组件 | 说明 |
 |------|------|
-| **Runtime** | PHP 解释器线程管理，本地并行执行的基础 |
-| **Task** | 并行任务闭包封装 |
-| **Future** | 异步任务返回值访问 |
+| **Engine** | 引擎抽象：`parallel`（真线程）/ `process`（pcntl 多进程）/ `sync`（同步回退），自动探测 |
+| **Runtime** | 并行执行上下文，屏蔽底层引擎差异 |
+| **Task** | 并行任务闭包封装，含 ext-parallel 限制校验（可关闭） |
+| **Future** | 异步任务返回值访问，统一 `FutureInterface` 契约 |
+| **Futures** | 组合器：`all` / `settle` / `any` / `race` / `cancelAll`，全部支持超时 |
+| **WorkerPool** | 引擎无关工作池：并发上限、`map` / `mapSettled`、运行统计 |
 | **Channel** | Task 间双向通信，支持有/无界限通道 |
 | **Events** | 事件循环驱动 |
 | **Fiber** | PHP Fiber 协程封装（基于 kode/fibers） |
@@ -85,8 +93,9 @@
 | **ThreadMap** | 线程安全 Map（Swoole Table 风格） |
 | **ThreadQueue** | 线程安全队列 |
 | **ThreadBarrier** | 线程屏障 |
-| **Util** | PHP 8.5 兼容工具：管道操作符、Clone With 等 |
-| **Installation** | 自动检测 ext-parallel 并提供安装提示 |
+| **Util** | PHP 8.5 兼容工具、`Sys` 系统探测（CPU 核心数、推荐并发度） |
+| **Installation** | 环境自检与诊断报告（引擎可用性、扩展、版本） |
+| **CLI** | `vendor/bin/kode-parallel doctor \| info \| bench` |
 | **集成组件** | **kode 生态集成** |
 | **ParallelRuntimeAdapter** | kode/runtime 运行时适配器 |
 | **FiberCoordinator** | Fiber 协调器（集成 kode/fibers） |
@@ -98,59 +107,72 @@
 
 | 要求 | 说明 |
 |------|------|
-| PHP 版本 | >= 8.1 |
-| 必需扩展 | ext-parallel |
+| PHP 版本 | **>= 8.3**（使用类型化类常量、`json_validate()`、`#[\Override]` 等特性） |
 | 必需包 | kode/fibers, kode/context, kode/facade |
-| 可选扩展 | ext-curl (用于 CurlMulti) |
+| 可选扩展 | ext-parallel（真线程）、ext-pcntl + ext-posix（多进程）、ext-curl（CurlMulti）、ext-sockets（集群） |
+
+> 一个扩展都不装也能运行：库会自动选择可用引擎，只是并行度不同。
 
 ### PHP 版本适配
 
 | PHP 版本 | 支持状态 | 特性 |
 |----------|---------|------|
-| 8.1 | ✅ 完全支持 | 基础 Fiber, readonly 属性 |
-| 8.2 | ✅ 完全支持 | 随机字节改进 |
-| 8.3 | ✅ 完全支持 | 改进的类型系统 |
-| 8.4 | ✅ 完全支持 | 改进的性能 |
+| < 8.3 | ❌ 不再支持 | 请使用 v1.5.x |
+| 8.3 | ✅ 完全支持 | 类型化类常量、`json_validate()`、`#[\Override]` |
+| 8.4 | ✅ 完全支持 | 属性钩子、改进性能 |
 | 8.5 | ✅ 最佳支持 | 管道操作符、Clone With、持久化 cURL |
 
 ---
 
 ## 安装
 
-### 1. 安装 ext-parallel 扩展（必需）
-
-```bash
-# Linux/macOS via PECL
-pecl install parallel
-
-# 或者从源码编译
-git clone https://github.com/krakjoe/parallel.git
-cd parallel
-phpize && ./configure && make && sudo make install
-```
-
-在 `php.ini` 中添加：
-```ini
-extension=parallel.so
-```
-
-安装后验证：
-```bash
-php -r "echo extension_loaded('parallel') ? 'OK' : '请先安装 ext-parallel';"
-composer run-script check
-```
-
-### 2. 安装 Composer 包
+### 1. 安装 Composer 包
 
 ```bash
 composer require kode/parallel
 ```
 
-这将自动安装所有依赖：kode/fibers, kode/context, kode/facade
+自动安装依赖：kode/fibers, kode/context, kode/facade。**无需任何 PECL 扩展即可开始使用。**
+
+### 2. 检查运行环境
+
+```bash
+vendor/bin/kode-parallel doctor   # 输出引擎可用性、CPU 核心数、扩展状态
+vendor/bin/kode-parallel bench 8  # 用当前引擎跑一次并行吞吐
+```
+
+### 3.（可选）安装 ext-parallel 获得真线程
+
+```bash
+# 需要线程安全（ZTS）构建的 PHP
+pecl install parallel
+
+# 或从源码编译
+git clone https://github.com/krakjoe/parallel.git
+cd parallel && phpize && ./configure && make && sudo make install
+```
+
+在 `php.ini` 中添加 `extension=parallel`，随后 `doctor` 的当前引擎会自动变为 `parallel`。
 
 ---
 
 ## 快速开始
+
+### 0. 一行并行（推荐入口）
+
+```php
+<?php
+require_once __DIR__ . '/vendor/autoload.php';
+
+use function Kode\Parallel\map;
+use function Kode\Parallel\engine;
+
+// 自动按 CPU 核心数并行处理，结果保持输入键序
+$sizes = map(['a.jpg', 'b.jpg', 'c.jpg'], static fn(string $file): int => strlen($file));
+
+echo '当前引擎: ' . engine() . PHP_EOL;   // parallel / process / sync
+print_r($sizes);
+```
 
 ### 1. 本地并行
 
@@ -249,6 +271,68 @@ $fiber = new Fiber(function() {
 echo $fiber->start() . "\n";       // 暂停
 echo $fiber->resume('恢复数据') . "\n"; // 收到: 恢复数据
 ```
+
+---
+
+## 执行引擎
+
+v1.6.0 起所有并行入口都构建在引擎抽象之上，按优先级自动探测：
+
+| 引擎 | 前提 | 并行方式 | 适用场景 |
+|------|------|---------|---------|
+| `parallel` | ext-parallel（ZTS PHP） | 真线程，共享进程 | 生产环境最佳性能 |
+| `process` | ext-pcntl（类 UNIX） | `fork` 多进程 + socket 回传 | 无扩展时的默认并行方案 |
+| `sync` | 无 | 当前进程内顺序执行 | Windows / 受限环境 / 调试 |
+
+```php
+use Kode\Parallel\Engine\EngineFactory;
+use Kode\Parallel\Runtime\Runtime;
+
+EngineFactory::available();            // ['parallel' => false, 'process' => true, 'sync' => true]
+EngineFactory::detect();               // 'process'
+
+$runtime = new Runtime();              // 自动选择
+$runtime = new Runtime(null, 'sync');  // 显式指定
+EngineFactory::setDefault('process');  // 全局强制
+```
+
+也可用环境变量强制指定，便于 CI 分别验证：
+
+```bash
+KODE_PARALLEL_ENGINE=sync composer test
+```
+
+### Futures 组合器
+
+```php
+use Kode\Parallel\Future\Futures;
+
+$futures = $runtime->runAll([
+    fn(array $a) => file_get_contents('https://example.com/a'),
+    fn(array $a) => file_get_contents('https://example.com/b'),
+]);
+
+$results  = Futures::all($futures, timeoutMs: 5000);   // 任一失败即抛出
+$settled  = Futures::settle($futures);                 // 全部结束，返回状态数组
+$fastest  = Futures::any($futures, 3000);              // 第一个成功的结果
+```
+
+### WorkerPool 工作池
+
+```php
+use Kode\Parallel\Pool\WorkerPool;
+
+$pool = new WorkerPool(concurrency: 8);
+
+$results = $pool->map(range(1, 100), static fn(int $n): int => $n * $n);
+$report  = $pool->mapSettled($urls, $fetch);   // 不因单个失败中断
+$stats   = $pool->stats();                     // engine / submitted / completed / failed / pending
+
+$pool->close();
+```
+
+> **process 引擎注意事项**：任务返回值必须可序列化；子进程内的内存修改不会回传父进程；
+> 需要共享状态时请使用 Channel、外部存储或集群模式。
 
 ---
 

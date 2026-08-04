@@ -4,50 +4,186 @@ declare(strict_types=1);
 
 namespace Kode\Parallel;
 
+use Kode\Parallel\Engine\EngineFactory;
+use Kode\Parallel\Exception\ParallelException;
+use Kode\Parallel\Future\FutureInterface;
+use Kode\Parallel\Future\Futures;
+use Kode\Parallel\Pool\WorkerPool;
 use Kode\Parallel\Runtime\Runtime;
 use Kode\Parallel\Task\Task;
-use Kode\Parallel\Future\Future;
+use Kode\Parallel\Util\Sys;
 
 /**
  * 并行执行快捷函数
  *
- * parallel\run() 是功能性的、更高级别的 API，
- * 提供了单一函数入口点来通过自动调度执行并行代码。
+ * 使用进程级共享 Runtime，自动选择最佳引擎。
  *
- * @param callable|\Closure $task 要并行执行的任务
- * @param array $args 任务参数
- * @param string|null $bootstrap 引导文件路径
- * @return Future 未来对象，用于获取任务返回值
+ * @param callable|\Closure $task 任务，签名为 fn(array $args): mixed
+ * @param array<array-key, mixed> $args 任务参数
+ * @param string|null $bootstrap 引导文件路径（仅首次调用生效）
  */
-function run(callable|\Closure $task, array $args = [], ?string $bootstrap = null): Future
+function run(callable|\Closure $task, array $args = [], ?string $bootstrap = null): FutureInterface
+{
+    return shared_runtime($bootstrap)->run($task, $args);
+}
+
+/**
+ * 获取进程级共享 Runtime
+ *
+ * @param string|null $bootstrap 引导文件路径（仅首次创建时生效）
+ */
+function shared_runtime(?string $bootstrap = null): Runtime
 {
     static $runtime = null;
 
-    if ($runtime === null) {
+    if ($runtime === null || $runtime->isClosed()) {
         $runtime = new Runtime($bootstrap);
     }
 
-    return $runtime->run($task, $args);
+    return $runtime;
 }
 
 /**
  * 创建新的 Runtime 实例
  *
  * @param string|null $bootstrap 引导文件路径
- * @return Runtime Runtime 实例
+ * @param string|null $engine 引擎名（parallel / process / sync）
  */
-function runtime(?string $bootstrap = null): Runtime
+function runtime(?string $bootstrap = null, ?string $engine = null): Runtime
 {
-    return new Runtime($bootstrap);
+    return new Runtime($bootstrap, $engine);
 }
 
 /**
  * 创建 Task 实例
- *
- * @param \Closure $closure 任务闭包
- * @return Task Task 实例
  */
 function task(\Closure $closure): Task
 {
     return new Task($closure);
+}
+
+/**
+ * 创建工作池
+ *
+ * @param int $concurrency 并发上限，<=0 按 CPU 核心数推荐
+ * @param string|null $engine 引擎名
+ */
+function pool(int $concurrency = 0, ?string $engine = null): WorkerPool
+{
+    return new WorkerPool($concurrency, $engine);
+}
+
+/**
+ * 并行映射：对集合每个元素并行执行 worker，按输入键序返回结果
+ *
+ * @param iterable<array-key, mixed> $items
+ * @param callable $worker 签名为 fn(mixed $item, array-key $key): mixed
+ * @param int $concurrency 并发上限，<=0 按 CPU 核心数推荐
+ * @return array<array-key, mixed>
+ * @throws ParallelException 任一任务失败
+ */
+function map(iterable $items, callable $worker, int $concurrency = 0): array
+{
+    $pool = new WorkerPool($concurrency);
+
+    try {
+        return $pool->map($items, $worker);
+    } finally {
+        $pool->close();
+    }
+}
+
+/**
+ * 并行映射（容错版）：返回每个元素的 fulfilled / rejected 状态
+ *
+ * @param iterable<array-key, mixed> $items
+ * @return array<array-key, array{status: string, value?: mixed, reason?: \Throwable}>
+ */
+function map_settled(iterable $items, callable $worker, int $concurrency = 0): array
+{
+    $pool = new WorkerPool($concurrency);
+
+    try {
+        return $pool->mapSettled($items, $worker);
+    } finally {
+        $pool->close();
+    }
+}
+
+/**
+ * 等待全部 Future 完成
+ *
+ * @param iterable<array-key, FutureInterface> $futures
+ * @return array<array-key, mixed>
+ */
+function all(iterable $futures, int $timeoutMs = 0): array
+{
+    return Futures::all($futures, $timeoutMs);
+}
+
+/**
+ * 等待全部 Future 结束并返回状态数组
+ *
+ * @param iterable<array-key, FutureInterface> $futures
+ * @return array<array-key, array{status: string, value?: mixed, reason?: \Throwable}>
+ */
+function settle(iterable $futures, int $timeoutMs = 0): array
+{
+    return Futures::settle($futures, $timeoutMs);
+}
+
+/**
+ * 取第一个成功的结果
+ *
+ * @param iterable<array-key, FutureInterface> $futures
+ */
+function any(iterable $futures, int $timeoutMs = 0): mixed
+{
+    return Futures::any($futures, $timeoutMs);
+}
+
+/**
+ * 取第一个结束的结果
+ *
+ * @param iterable<array-key, FutureInterface> $futures
+ */
+function race(iterable $futures, int $timeoutMs = 0): mixed
+{
+    return Futures::race($futures, $timeoutMs);
+}
+
+/**
+ * 等待单个 Future 并取值
+ *
+ * @param int $timeoutMs 超时毫秒数，<=0 表示无限等待
+ * @throws ParallelException 超时或任务失败
+ */
+function await(FutureInterface $future, int $timeoutMs = 0): mixed
+{
+    if (!$future->wait($timeoutMs)) {
+        throw new ParallelException(
+            '等待任务超时',
+            0,
+            null,
+            ['id' => $future->getId(), 'timeout_ms' => $timeoutMs]
+        );
+    }
+
+    return $future->get();
+}
+
+/**
+ * 当前生效的引擎名（parallel / process / sync）
+ */
+function engine(): string
+{
+    return EngineFactory::detect();
+}
+
+/**
+ * CPU 逻辑核心数
+ */
+function cpus(): int
+{
+    return Sys::cpuCount();
 }

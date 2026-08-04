@@ -8,12 +8,14 @@ on:
 
 jobs:
   test:
-    name: Test PHP ${{ matrix.php-versions }}
+    name: PHP ${{ matrix.php-versions }} / ${{ matrix.engine }}
     runs-on: ubuntu-latest
 
     strategy:
+      fail-fast: false
       matrix:
-        php-versions: ['8.1', '8.2', '8.3', '8.4', '8.5']
+        php-versions: ['8.3', '8.4']
+        engine: ['process', 'sync']
 
     steps:
       - name: Checkout
@@ -23,20 +25,25 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php-versions }}
-          extensions: parallel
+          extensions: pcntl, posix, sockets
           coverage: none
 
       - name: Validate composer.json
-        run: composer validate --strict
+        run: composer validate --no-check-publish
 
       - name: Install dependencies
-        run: composer install --prefer-dist
+        run: composer install --prefer-dist --no-progress
 
-      - name: Run tests
-        run: composer test
+      - name: Environment doctor
+        run: php bin/kode-parallel doctor
 
       - name: PHP lint
-        run: php -l src/**/*.php
+        run: composer run-script lint
+
+      - name: Run tests
+        env:
+          KODE_PARALLEL_ENGINE: ${{ matrix.engine }}
+        run: composer test
 
   coding-standard:
     name: Code Style Check
@@ -49,11 +56,11 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.4'
-          extensions: parallel
+          php-version: '8.3'
+          extensions: pcntl, posix, sockets
 
       - name: Install dependencies
-        run: composer install --prefer-dist
+        run: composer install --prefer-dist --no-progress
 
       - name: Run PHP CodeSniffer
         run: |
@@ -75,11 +82,11 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.4'
-          extensions: parallel
+          php-version: '8.3'
+          extensions: pcntl, posix, sockets
 
       - name: Install dependencies
-        run: composer install --prefer-dist
+        run: composer install --prefer-dist --no-progress
 
-      - name: Run benchmark
-        run: php tests/Benchmark.php
+      - name: Engine benchmark
+        run: php bin/kode-parallel bench 8

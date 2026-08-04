@@ -12,7 +12,7 @@
 | **线程管理** | Runtime 线程池 | SwooleThread |
 | **内存模型** | 线程独立内存 (COW) | 线程共享内存 (Table/Channel) |
 | **通信方式** | Channel | Thread\Channel / Thread\Queue |
-| **PHP 版本** | >= 8.1 | Swoole 4.x |
+| **PHP 版本** | >= 8.3 | Swoole 4.x |
 | **协程** | kode/fibers | Swoole Coroutine |
 
 **两者都是多线程**，核心区别在于**内存模型**：
@@ -320,7 +320,7 @@ $data = $chan->pop();
 ```
 ✅ 需要线程独立内存（更稳定）
 ✅ 需要简单闭包式并行
-✅ PHP 8.1+ 项目
+✅ PHP 8.3+ 项目
 ✅ 需要跨机器分布式集群
 ✅ 需要完整的 Channel 通信
 ✅ 内存敏感型应用
