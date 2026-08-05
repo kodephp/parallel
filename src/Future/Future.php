@@ -14,6 +14,8 @@ use Kode\Parallel\Exception\ParallelException;
  */
 final class Future implements FutureInterface
 {
+    use FutureComposeTrait;
+
     private \parallel\Future $future;
     private bool $cancelled = false;
     private readonly string $id;

@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 namespace Kode\Parallel;
 
+use Kode\Parallel\Concurrency\Atomic;
+use Kode\Parallel\Concurrency\AtomicLong;
+use Kode\Parallel\Concurrency\Barrier;
+use Kode\Parallel\Concurrency\Channel;
+use Kode\Parallel\Concurrency\Lock;
 use Kode\Parallel\Engine\EngineFactory;
 use Kode\Parallel\Exception\ParallelException;
 use Kode\Parallel\Future\FutureInterface;
@@ -186,4 +191,67 @@ function engine(): string
 function cpus(): int
 {
     return Sys::cpuCount();
+}
+
+/**
+ * 引擎无关的互斥锁（无需 ext-parallel / ZTS）
+ *
+ * @param string|null $name 命名锁：多进程传相同名称即可共享同一把锁
+ * @see Lock
+ */
+function sync_lock(?string $name = null): Lock
+{
+    return $name === null ? new Lock() : Lock::named($name);
+}
+
+/**
+ * 引擎无关的整数原子计数器
+ *
+ * @param string|null $name 命名原子量：多进程传相同名称即可共享同一计数器
+ * @see Atomic
+ */
+function atomic(int $initial = 0, ?string $name = null): Atomic
+{
+    return $name === null ? new Atomic($initial) : Atomic::named($initial, $name);
+}
+
+/**
+ * 引擎无关的 64 位原子计数器
+ *
+ * @see AtomicLong
+ */
+function atomic_long(int $initial = 0, ?string $name = null): AtomicLong
+{
+    return $name === null ? new AtomicLong($initial) : AtomicLong::named($initial, $name);
+}
+
+/**
+ * 引擎无关的屏障（线程/进程栅栏）
+ *
+ * @param string|null $name 命名屏障：多进程传相同名称即可同步
+ * @see Barrier
+ */
+function barrier(int $count, ?string $name = null): Barrier
+{
+    return $name === null ? new Barrier($count) : Barrier::named($count, $name);
+}
+
+/**
+ * 引擎无关的消息通道（单运行时队列）
+ *
+ * @see Channel
+ */
+function concurrent_channel(int $capacity = Channel::CAPACITY_UNBOUNDED): Channel
+{
+    return $capacity > 0 ? Channel::bounded($capacity) : Channel::make();
+}
+
+/**
+ * 非阻塞选择：返回第一个已就绪的 Future 对象，超时无就绪则返回 null
+ *
+ * @see Futures::select()
+ */
+function futures_select(iterable $futures, int $timeoutMs = 0): ?FutureInterface
+{
+    return Futures::select($futures, $timeoutMs);
 }

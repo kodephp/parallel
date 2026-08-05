@@ -4,7 +4,7 @@
 
 [![PHP Version](https://img.shields.io/badge/PHP-%3E%3D8.3-blue)](https://php.net)
 [![License](https://img.shields.io/badge/License-Apache--2.0-green)](LICENSE)
-[![Package Version](https://img.shields.io/badge/Version-1.6.0-orange)](composer.json)
+[![Package Version](https://img.shields.io/badge/Version-1.7.0-orange)](composer.json)
 [![Engines](https://img.shields.io/badge/Engines-parallel%20%7C%20process%20%7C%20sync-purple)](docs/ENGINE.md)
 
 ## 目录
@@ -30,7 +30,7 @@
 
 `kode/parallel` 是适用于 PHP 8.3+ 的高性能并行并发库，提供面向对象的高层 API、完整中文文档，以及 PHP 8.5 新特性的前向兼容实现。
 
-自 **v1.6.0** 起引入引擎抽象层：同一套代码在装了 `ext-parallel` 的机器上跑真线程，在只有 `pcntl` 的机器上自动降级为多进程，在 Windows 等受限环境下退化为同步执行——**扩展从硬依赖变为可选加速项**。
+自 **v1.6.0** 起引入引擎抽象层；**v1.7.0** 进一步提供引擎无关的同步原语（`Lock`/`Atomic`/`Barrier`/`Channel`，无需 ZTS/ext-parallel）与 `Future` 组合子。同一套代码在装了 `ext-parallel` 的机器上跑真线程，在只有 `pcntl` 的机器上自动降级为多进程，在 Windows 等受限环境下退化为同步执行——**扩展从硬依赖变为可选加速项**。
 
 ### 架构模型：多线程 + 分布式
 
@@ -62,7 +62,8 @@
 |------|------|------|
 | **执行引擎** | 多引擎自动降级 | EngineFactory, ParallelEngine, ProcessEngine, SyncEngine |
 | **本地并行** | 多线程 / 多进程执行 | Runtime, Task, Future, Futures, WorkerPool, Channel, Events |
-| **同步原语** | 互斥/信号量 | Mutex, Semaphore, Cond, Barrier |
+| **同步原语** | 互斥/信号量/原子/屏障（parallel 引擎） | Mutex, Semaphore, Cond, Barrier |
+| **引擎无关同步原语** | 互斥/原子计数/屏障/通道（**无需 ext-parallel / ZTS**，对标 Swoole Thread） | Concurrency\Lock, Atomic, AtomicLong, Barrier, Channel |
 | **协程支持** | Fiber 协程 | Fiber, FiberManager |
 | **跨机器** | 分布式集群 | Node, TcpNodeTransport, ClusterManager, ClusterServer |
 | **HTTP 并行** | 并行请求 | CurlMulti |
@@ -76,13 +77,14 @@
 | **Engine** | 引擎抽象：`parallel`（真线程）/ `process`（pcntl 多进程）/ `sync`（同步回退），自动探测 |
 | **Runtime** | 并行执行上下文，屏蔽底层引擎差异 |
 | **Task** | 并行任务闭包封装，含 ext-parallel 限制校验（可关闭） |
-| **Future** | 异步任务返回值访问，统一 `FutureInterface` 契约 |
-| **Futures** | 组合器：`all` / `settle` / `any` / `race` / `cancelAll`，全部支持超时 |
+| **Future** | 异步任务返回值访问，统一 `FutureInterface` 契约，支持 `then` / `map` / `catch` 组合子 |
+| **Futures** | 组合器：`all` / `settle` / `any` / `race` / `select`（非阻塞），全部支持超时 |
 | **WorkerPool** | 引擎无关工作池：并发上限、`map` / `mapSettled`、运行统计 |
 | **Channel** | Task 间双向通信，支持有/无界限通道 |
 | **Events** | 事件循环驱动 |
 | **Fiber** | PHP Fiber 协程封装（基于 kode/fibers） |
-| **Sync** | 同步原语：Mutex、Semaphore、Cond、Barrier |
+| **Sync** | 同步原语：Mutex、Semaphore、Cond、Barrier（parallel 引擎） |
+| **Concurrency** | **引擎无关同步原语**：`Lock` / `Atomic` / `AtomicLong` / `Barrier` / `Channel`，无需 ext-parallel / ZTS，对标 Swoole 6 `Thread\Lock/Atomic/Barrier/Queue` |
 | **Pipe** | 进程间通信管道 |
 | **CurlMulti** | 并行 HTTP 请求封装 |
 | **Node** | 集群节点表示（跨机器） |
@@ -93,6 +95,7 @@
 | **ThreadMap** | 线程安全 Map（Swoole Table 风格） |
 | **ThreadQueue** | 线程安全队列 |
 | **ThreadBarrier** | 线程屏障 |
+| **并发原语（引擎无关）** | `Lock` / `Atomic` / `AtomicLong` / `Barrier` / `Channel` —— 无需 ext-parallel / ZTS |
 | **Util** | PHP 8.5 兼容工具、`Sys` 系统探测（CPU 核心数、推荐并发度） |
 | **Installation** | 环境自检与诊断报告（引擎可用性、扩展、版本） |
 | **CLI** | `vendor/bin/kode-parallel doctor \| info \| bench` |
@@ -333,6 +336,80 @@ $pool->close();
 
 > **process 引擎注意事项**：任务返回值必须可序列化；子进程内的内存修改不会回传父进程；
 > 需要共享状态时请使用 Channel、外部存储或集群模式。
+
+### 引擎无关同步原语（Concurrency）
+
+v1.7.0 新增的 `Kode\Parallel\Concurrency\*` 系列，**不依赖 ext-parallel / ZTS**，在 stock PHP CLI
+（process / sync 引擎）下即可使用，对标 Swoole 6 的 `Thread\*` 原语——区别在于 kode/parallel 还
+能在「非 ZTS、无 ext-parallel」的普通 PHP 上运行，而 Swoole 的多线程必须 ZTS 构建。
+
+```php
+use Kode\Parallel\Concurrency\Lock;
+use Kode\Parallel\Concurrency\Atomic;
+use Kode\Parallel\Concurrency\Barrier;
+use Kode\Parallel\Concurrency\Channel;
+
+// 互斥锁（可命名，跨进程共享）
+$lock = Lock::named('order');
+$lock->withLock(function () {
+    // 临界区
+});
+
+// 原子计数器（跨进程安全的自增，CAS 支持）
+$counter = new Atomic(0);
+$counter->inc();
+$counter->compareAndSwap(1, 10);
+
+// 屏障：N 个参与者到齐后整体放行，并自动进入下一代
+$barrier = Barrier::named(4, 'phase-1');
+$barrier->wait();
+
+// 单运行时消息通道（有界/无界）
+$ch = Channel::bounded(8);
+$ch->send($item);
+$item = $ch->recv();
+```
+
+> 命名原语（传 `$name`）通过共享文件 + `flock` 在多进程间协作；匿名原语作用于同一运行时内部。
+> 若需在 **parallel 引擎的线程内部**使用同步原语，仍推荐既有的 `Kode\Parallel\Sync\*`（`Mutex` / `Semaphore` / `Cond` / `Barrier`，基于 `parallel\Sync`）。
+
+### Future 组合子与 select
+
+`FutureInterface` 自 v1.7.0 起支持链式组合，惰性解析、对所有引擎通用：
+
+```php
+use Kode\Parallel\Future\Futures;
+
+$future = runtime()->run(fn($a) => $a['x'] + 1, ['x' => 41]);
+
+$chained = $future
+    ->then(fn($v) => $v * 2)        // 成功时变换
+    ->map(fn($v) => "result:$v")    // 同 then，仅做映射
+    ->catch(fn($e) => "fallback");  // 失败时兜底
+
+echo $chained->get();               // "result:84"
+
+// 非阻塞选择：返回第一个已就绪的 Future（对标 parallel\Events::poll / Swoole Channel::select）
+$ready = Futures::select([$f1, $f2, $f3], timeoutMs: 1000);
+```
+
+### 对比同类方案
+
+| 维度 | **kode/parallel** | Swoole 6（Thread） | ext-parallel | pthreads |
+|------|-------------------|--------------------|--------------|----------|
+| 并行模型 | 真线程 / 多进程 / 同步回退 | 真线程（ZTS） | 真线程（ZTS） | 真线程（ZTS，已废弃） |
+| **无需 ZTS / 扩展** | ✅ process/sync 引擎开箱即用 | ❌ 必须 ZTS + `--enable-swoole-thread` | ❌ 必须 ZTS | ❌ 必须 ZTS |
+| 统一 Future 契约 | ✅ `FutureInterface` | ❌ 线程对象 `join()` | 部分（`parallel\Future`） | ❌ |
+| 组合器 / select | ✅ all/settle/any/race/select | ❌ | ⚠️ 仅 `Events` | ❌ |
+| 同步原语 | ✅ Lock/Atomic/Barrier/Channel（引擎无关） | ✅ Lock/Atomic/Map/Queue | ✅ Mutex/Semaphore/Cond/Barrier | ⚠️ 同步方法 |
+| 工作池 | ✅ 引擎无关 `WorkerPool` | ⚠️ `Thread\Pool` | ❌（需自管 Runtime） | ❌ |
+| 跨机器集群 | ✅ Cluster | ❌ | ❌ | ❌ |
+| 协程 | ✅ Fiber 集成 | ✅ 协程 | ❌ | ❌ |
+| 最低 PHP | 8.3 | 8.1（线程需 ZTS） | 7.2（ZTS） | 7.2（ZTS） |
+
+**结论**：Swoole 多线程与 ext-parallel 都受限于「必须 ZTS 构建」，而 kode/parallel 的
+engine 抽象让同一份代码在普通 PHP CLI 上也能获得真多进程并行，并补齐了 Future 组合子、
+select 非阻塞等待与引擎无关同步原语——这是「最优最高」的调整方向。
 
 ---
 

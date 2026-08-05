@@ -17,6 +17,8 @@ use Kode\Parallel\Exception\ParallelException;
  */
 final class ProcessFuture implements FutureInterface
 {
+    use FutureComposeTrait;
+
     /** 单次读取块大小 */
     private const int CHUNK_SIZE = 65536;
 

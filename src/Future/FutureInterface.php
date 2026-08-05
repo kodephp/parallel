@@ -55,4 +55,29 @@ interface FutureInterface
      * 任务唯一标识
      */
     public function getId(): string;
+
+    /**
+     * 组合子：当本 Future 成功时执行 $onFulfilled，失败时执行 $onRejected。
+     *
+     * 返回一个新 Future，其结果为回调的返回值；回调抛出的异常会转为失败 Future。
+     * 解析是惰性的（在调用 get()/wait() 时触发），因此对所有引擎通用。
+     *
+     * @param callable(mixed): mixed $onFulfilled
+     * @param callable(\Throwable): mixed|null $onRejected
+     */
+    public function then(callable $onFulfilled, ?callable $onRejected = null): FutureInterface;
+
+    /**
+     * 组合子：对成功结果做映射变换。
+     *
+     * @param callable(mixed): mixed $transform
+     */
+    public function map(callable $transform): FutureInterface;
+
+    /**
+     * 组合子：捕获失败。返回的新 Future 在失败时执行 $onRejected 的结果（或重抛）。
+     *
+     * @param callable(\Throwable): mixed $onRejected
+     */
+    public function catch(callable $onRejected): FutureInterface;
 }

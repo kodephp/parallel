@@ -169,6 +169,47 @@ final class Futures
     }
 
     /**
+     * 非阻塞选择：返回第一个已就绪的 Future 对象，若超时仍无就绪则返回 null。
+     *
+     * 与 {@see race()} 的区别：race 返回「第一个结束任务的结果值」，而 select 返回
+     * 「第一个结束任务的 Future 本身」，便于在多个 Future 之间做事件驱动式调度，
+     * 对标 Swoole 的 {@see \Swoole\Channel::select()} 与 ext-parallel 的
+     * {@see \parallel\Events::poll()}。
+     *
+     * @param iterable<array-key, FutureInterface> $futures
+     * @param int $timeoutMs 超时毫秒数，<=0 表示立即返回（只检查当前是否已有就绪）
+     * @return FutureInterface|null 第一个就绪的 Future，或 null
+     */
+    public static function select(iterable $futures, int $timeoutMs = 0): ?FutureInterface
+    {
+        $list = self::normalize($futures);
+
+        if ($list === []) {
+            return null;
+        }
+
+        $deadline = $timeoutMs > 0 ? hrtime(true) + ($timeoutMs * 1_000_000) : null;
+
+        while (true) {
+            foreach ($list as $future) {
+                if ($future->done()) {
+                    return $future;
+                }
+            }
+
+            if ($deadline === null) {
+                return null;
+            }
+
+            if (hrtime(true) >= $deadline) {
+                return null;
+            }
+
+            usleep(self::POLL_INTERVAL_US);
+        }
+    }
+
+    /**
      * 批量取消未完成任务
      *
      * @param iterable<array-key, FutureInterface> $futures

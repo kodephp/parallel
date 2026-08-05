@@ -97,6 +97,76 @@ print_r($pool->stats());  // 提交数 / 完成数 / 失败数 / 并发上限
 $pool->close();
 ```
 
+## 引擎无关同步原语（Concurrency）
+
+v1.7.0 新增 `Kode\Parallel\Concurrency\*` 系列，**无需 ext-parallel / ZTS**，在 stock PHP CLI
+（process / sync 引擎）下即可使用，对标 Swoole 6 的 `Thread\*` 原语，且能在非 ZTS、无 ext-parallel
+的普通 PHP 上运行（Swoole 多线程必须 ZTS 构建）。
+
+```php
+use Kode\Parallel\Concurrency\Lock;
+use Kode\Parallel\Concurrency\Atomic;
+use Kode\Parallel\Concurrency\AtomicLong;
+use Kode\Parallel\Concurrency\Barrier;
+use Kode\Parallel\Concurrency\Channel;
+
+// 互斥锁（命名锁跨进程共享，底层 flock）
+$lock = Lock::named('order');
+$lock->withLock(fn () => /* 临界区 */ null);
+
+// 原子计数器（跨进程安全；flock 保证无丢失更新）
+$c = new Atomic(0);
+$c->inc();
+$c->compareAndSwap(1, 10);
+
+// 屏障：N 个参与者到齐后整体放行，并自动进入下一代
+$barrier = Barrier::named(4, 'phase');
+$barrier->wait();
+
+// 单运行时消息通道（有界 / 无界）
+$ch = Channel::bounded(8);
+$ch->send($item);
+$item = $ch->recv();
+```
+
+全局快捷函数：`sync_lock()` / `atomic()` / `atomic_long()` / `barrier()` / `concurrent_channel()`。
+
+> 命名原语（传 `$name`）通过共享文件 + `flock` 在多进程间协作；匿名原语作用于同一运行时内部。
+> 若在 **parallel 引擎的线程内部**需要同步原语，请使用既有的 `Kode\Parallel\Sync\*`（`Mutex` / `Semaphore` / `Cond` / `Barrier`，基于 `parallel\Sync`）。
+
+## Future 组合子与 select
+
+`FutureInterface` 自 v1.7.0 起支持链式组合（惰性解析、对所有引擎通用）：
+
+```php
+$future = runtime()->run(fn($a) => $a['x'] + 1, ['x' => 41]);
+
+$chained = $future
+    ->then(fn($v) => $v * 2)
+    ->map(fn($v) => "result:$v")
+    ->catch(fn($e) => "fallback");
+
+echo $chained->get();   // "result:84"
+```
+
+`Futures::select()` 提供**非阻塞选择**，返回第一个已就绪的 Future（对标 `parallel\Events::poll` / Swoole `Channel::select`）：
+
+```php
+$ready = Futures::select([$f1, $f2, $f3], timeoutMs: 1000); // 超时无就绪返回 null
+```
+
+## 对比同类方案
+
+| 维度 | **kode/parallel** | Swoole 6（Thread） | ext-parallel |
+|------|-------------------|--------------------|--------------|
+| 并行模型 | 真线程 / 多进程 / 同步回退 | 真线程（ZTS） | 真线程（ZTS） |
+| 无需 ZTS / 扩展 | ✅ process/sync 开箱即用 | ❌ 必须 ZTS | ❌ 必须 ZTS |
+| 统一 Future 契约 | ✅ | ❌ | 部分 |
+| 组合器 / select | ✅ all/settle/any/race/select | ❌ | ⚠️ 仅 Events |
+| 同步原语 | ✅ Lock/Atomic/Barrier/Channel（引擎无关） | ✅ Lock/Atomic/Map/Queue | ✅ Mutex/Semaphore/Cond/Barrier |
+| 工作池 | ✅ 引擎无关 WorkerPool | ⚠️ Thread\Pool | ❌ |
+| 跨机器集群 | ✅ Cluster | ❌ | ❌ |
+
 ## 诊断
 
 ```bash
