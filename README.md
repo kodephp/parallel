@@ -4,7 +4,7 @@
 
 [![PHP Version](https://img.shields.io/badge/PHP-%3E%3D8.3-blue)](https://php.net)
 [![License](https://img.shields.io/badge/License-Apache--2.0-green)](LICENSE)
-[![Package Version](https://img.shields.io/badge/Version-1.7.0-orange)](composer.json)
+[![Package Version](https://img.shields.io/badge/Version-1.8.0-orange)](composer.json)
 [![Engines](https://img.shields.io/badge/Engines-parallel%20%7C%20process%20%7C%20sync-purple)](docs/ENGINE.md)
 
 ## 目录
@@ -395,17 +395,21 @@ $ready = Futures::select([$f1, $f2, $f3], timeoutMs: 1000);
 
 ### 对比同类方案
 
-| 维度 | **kode/parallel** | Swoole 6（Thread） | ext-parallel | pthreads |
-|------|-------------------|--------------------|--------------|----------|
+| 维度 | **kode/parallel** | Swoole 6.2（Thread） | ext-parallel | pthreads |
+|------|-------------------|----------------------|--------------|----------|
 | 并行模型 | 真线程 / 多进程 / 同步回退 | 真线程（ZTS） | 真线程（ZTS） | 真线程（ZTS，已废弃） |
 | **无需 ZTS / 扩展** | ✅ process/sync 引擎开箱即用 | ❌ 必须 ZTS + `--enable-swoole-thread` | ❌ 必须 ZTS | ❌ 必须 ZTS |
 | 统一 Future 契约 | ✅ `FutureInterface` | ❌ 线程对象 `join()` | 部分（`parallel\Future`） | ❌ |
 | 组合器 / select | ✅ all/settle/any/race/select | ❌ | ⚠️ 仅 `Events` | ❌ |
-| 同步原语 | ✅ Lock/Atomic/Barrier/Channel（引擎无关） | ✅ Lock/Atomic/Map/Queue | ✅ Mutex/Semaphore/Cond/Barrier | ⚠️ 同步方法 |
+| 同步原语 | ✅ Lock/Atomic/Barrier/Channel（引擎无关，**跨进程**） | ✅ Lock/Atomic/Map/Queue（**同进程共享内存**） | ✅ Mutex/Semaphore/Cond/Barrier | ⚠️ 同步方法 |
 | 工作池 | ✅ 引擎无关 `WorkerPool` | ⚠️ `Thread\Pool` | ❌（需自管 Runtime） | ❌ |
 | 跨机器集群 | ✅ Cluster | ❌ | ❌ | ❌ |
 | 协程 | ✅ Fiber 集成 | ✅ 协程 | ❌ | ❌ |
-| 最低 PHP | 8.3 | 8.1（线程需 ZTS） | 7.2（ZTS） | 7.2（ZTS） |
+| 最低 PHP | 8.3 | 8.1–8.5（线程需 ZTS） | 7.2（ZTS） | 7.2（ZTS） |
+
+> 对标版本：Swoole **6.2.2**（2026-07，6.x 最新稳定版）。其原生线程必须 ZTS + `--enable-swoole-thread` 编译，
+> 且需禁用 pthreads；kode/parallel 的 `Concurrency\*` 原语在**普通非 ZTS PHP** 上即可运行，并天然**跨进程**共享状态——
+> 这是与 Swoole 线程（进程内共享内存）的根本差异。详见 [docs/SWOOLE_COMPARISON.md](docs/SWOOLE_COMPARISON.md)。
 
 **结论**：Swoole 多线程与 ext-parallel 都受限于「必须 ZTS 构建」，而 kode/parallel 的
 engine 抽象让同一份代码在普通 PHP CLI 上也能获得真多进程并行，并补齐了 Future 组合子、

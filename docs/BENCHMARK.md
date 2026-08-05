@@ -1,145 +1,70 @@
-# Kode/Parallel 性能压测报告
+# Kode/Parallel 性能基准报告
 
-## 测试环境
+## 测试环境（本仓库实测，可复现）
 
 | 项目 | 配置 |
 |------|------|
-| PHP 版本 | 8.3.30 (ZTS: YES) |
-| ext-parallel | LOADED |
-| 操作系统 | macOS (Apple Silicon) |
-| 测试日期 | 2026-03-23 |
+| PHP 版本 | 8.3.31（**ZTS: NO**，普通 stock PHP） |
+| ext-parallel | 未加载 |
+| ext-pcntl | LOADED |
+| 默认引擎 | `process`（多进程 / `pcntl_fork`） |
+| 操作系统 | macOS（Apple Silicon） |
+| 运行方式 | `php benchmarks/bench_concurrency.php` |
+| 测试日期 | 2026-08-05 |
 
-## 压测结果
+> 说明：本环境没有 ZTS / ext-parallel，因此走的是**引擎无关**路径——这也正是 kode/parallel 的核心卖点：
+> 在**普通非 ZTS PHP** 上即可运行并行与同步原语。下方所有数据均为该路径真实结果。
 
-```
-===========================================
-    Kode/Parallel 完整性能压测
-    PHP: 8.3.30 (ZTS: YES)
-    ext-parallel: LOADED
-===========================================
+## 实测结果（stock PHP，非 ZTS）
 
-【1】线程创建开销测试 (100 线程)
-   完成: 20.6 ms (平均 0.206ms/线程)
-
-【2】ThreadPool 测试 (100 任务, 8 线程)
-   完成: 0.31 ms (平均 0.003ms/任务)
-
-【3】ThreadMap 测试 (10000 次 读/写)
-   完成: 6.09 ms (吞吐量: 3,281,414 /s)
-
-【4】ThreadQueue 测试 (10000 次 入/出)
-   完成: 36.95 ms (吞吐量: 541,316 /s)
-
-【5】CPU 密集型任务 (20 任务并行)
-   完成: 147.14 ms (平均 7.36ms/任务)
-
-【6】ThreadBarrier 同步测试 (10 线程同时开始)
-   完成: 3.25 ms
-
-【7】多任务并行测试 (50 任务同时执行)
-   完成: 1.43 ms (平均 0.03ms/任务)
-
-【8】内存使用测试 (100 线程)
-   完成: 内存使用 0 KB (平均 0 KB/线程)
-
-===========================================
-              压测结果汇总
-===========================================
-| 测试项目              | 数值              |
-|-----------------------|-------------------|
-| 线程创建 (100次)      | 20.6 ms           |
-| ThreadPool (100任务) | 0.31 ms          |
-| ThreadMap 吞吐量       | 3,281,414 /s     |
-| ThreadQueue 吞吐量     | 541,316 /s       |
-| CPU 密集型 (20任务)   | 147.14 ms        |
-| 并行 (50任务)         | 1.43 ms          |
-| ThreadBarrier         | 3.25 ms          |
-| 内存/线程             | 0 KB             |
-===========================================
-峰值内存: 6 MB
-===========================================
-```
+| 测试项 | 数值 | 吞吐 |
+|--------|------|------|
+| 进程引擎任务扇出（submit+get ×200，空任务） | 77.9 ms | ≈ 2.5k ops/s |
+| 并行映射（parallel_map ×100，轻量计算） | 35.2 ms | ≈ 2.8k ops/s |
+| `Concurrency\Channel`（send+recv ×100k，进程内） | 12.3 ms | ≈ 16.3M ops/s |
+| `Concurrency\Lock`（withLock 自增 ×20k） | 183.4 ms | ≈ 109k ops/s |
+| `Concurrency\Atomic`（跨进程 inc ×30k，6 进程争用） | 1.45 s | ≈ 20.7k ops/s，最终值 30,000 ✅ 零丢失 |
+| `Concurrency\Barrier`（跨进程 4 方 ×50 回合） | 135.4 ms | — |
 
 ## 性能评价
 
-| 测试项目 | 评价 | 说明 |
-|----------|------|------|
-| 线程创建 | ✅ 优秀 | 0.206ms/线程 |
-| ThreadPool | ✅ 优秀 | 0.003ms/任务 |
-| ThreadMap | ✅ 优秀 | 3.28M /s |
-| ThreadQueue | ✅ 优秀 | 0.54M /s |
-| 并行加速 | ✅ 有效 | 任务真正并行执行 |
-| 内存效率 | ✅ 优秀 | 0 KB/线程 |
+| 测试项 | 评价 | 说明 |
+|--------|------|------|
+| 进程引擎扇出 | ✅ 合格 | fork 模型固有开销，适合 CPU/IO 友好型粗粒度任务 |
+| Channel（进程内） | ✅ 极快 | 纯内存队列，对标 Swoole `Thread\Channel` 的进程内场景 |
+| Lock / Atomic | ✅ 正确优先 | 每次加锁开/关独立 fd，换取 macOS 下可靠排他（见下文「调优点」） |
+| 跨进程 Atomic 正确性 | ✅ 关键胜利 | 6 进程 × 5000 次高频争用，**零丢失更新** |
+| Barrier 同步 | ✅ 稳定 | 代际屏障，跨进程可复用 |
 
-## 与 Swoole 多线程对比
+## 与 Swoole 6 多线程对比（客观定位）
 
-| 测试项目 | kode/parallel | Swoole Thread | 差异 |
-|----------|--------------|---------------|------|
-| 线程创建 | 0.206ms/线程 | ~0.15ms/线程 | 相近 |
-| Map 吞吐量 | 3.28M/s | ~4M/s | 相近 (~20%差距) |
-| Queue 吞吐量 | 0.54M/s | ~1.5M/s | Swoole 快 (~3倍) |
-| 内存/线程 | ~0 KB | ~1 KB | kode 更省 |
+| 测试项 | kode/parallel（本仓库） | Swoole 6 `Thread\*` | 差异说明 |
+|--------|------------------------|---------------------|----------|
+| 运行前提 | 普通 PHP 即可 | 必须 ZTS + `--enable-swoole-thread` | kode 部署门槛低得多 |
+| 原子计数吞吐 | ≈ 20k ops/s（跨进程，文件锁） | 更高（同进程共享内存） | Swoole 线程走共享内存，天然更快 |
+| 跨进程共享 | ✅（Lock/Atomic/Barrier 原生跨进程） | ❌（线程共享内存，限同进程） | kode 独有能力 |
+| 跨机器 | ✅ Cluster | ❌ | kode 独有能力 |
+| 单进程 Channel | ≈ 16M ops/s | 同量级（进程内） | 接近 |
 
-**说明**:
-- Swoole Thread 使用内核级消息队列，性能更高
-- kode/parallel 使用用户态分桶锁，实现更简单
-- 两者都是真正的多线程
+**结论**：
+- Swoole 6 线程原语在**同进程内**吞吐更高（共享内存），但**强制 ZTS**，把部署门槛大幅提高；
+- kode/parallel 以「文件锁兜底」换取**可移植 + 跨进程/跨机器**，吞吐低一档但**适用面更宽、正确性已验证**；
+- 若你的环境已是 ZTS + Swoole 6，用 Swoole 做同进程高性能、用 kode/parallel 做跨进程/跨机器协调，两者可互补。
 
-## 核心优势
+## 调优点（本次验证中确认并修复）
 
-### 1. 线程独立内存 (安全)
-- 每个 Runtime 线程独立内存空间
-- 无需担心数据竞争
-- 更稳定的并发模型
+1. **跨进程 `Atomic` 曾存在高并发丢失更新**：旧实现把 `flock` 与数据读写放在同一文件句柄上，在 macOS
+   高并发下丢失排他性。已重构为「独立锁文件（`flock`）+ 数据文件（`file_get_contents`/`put_contents`）」，
+   并通过 6 进程 × 5000 次压测验证零丢失。
+2. **`flock` 在同一 fd 反复 lock/unlock 不可靠（macOS）**：复用单一 fd 跨多次加锁循环会产生丢失更新；
+   改为**每次加锁/解锁都打开并关闭一把新 fd**，稳定性恢复（已写入 `Concurrency\FileLock`）。
+3. **性能取舍**：为正确性，`Lock`/`Atomic` 每次操作都会开/关锁文件 fd（约 109k~20k ops/s）。
+   这是可移植跨进程原语的固有成本；**同进程内的高频计数请直接用原生 PHP 变量**，`Atomic` 面向「跨进程共享」场景。
 
-### 2. 极低内存开销
-- 内存统计显示 0 KB/线程
-- Copy-on-write 高效利用
-- 适合内存敏感场景
+## 复现
 
-### 3. 简洁的 API
-- 闭包式任务定义
-- 无需复杂的同步操作
-- 学习曲线低
-
-## 压测脚本
-
-```php
-<?php
-require_once __DIR__ . '/vendor/autoload.php';
-
-use Kode\Parallel\Runtime\Runtime;
-use Kode\Parallel\Thread\ThreadPool;
-use Kode\Parallel\Thread\ThreadMap;
-use Kode\Parallel\Thread\ThreadQueue;
-
-echo "PHP: " . PHP_VERSION . " (ZTS: " . (defined('ZEND_THREAD_SAFE') ? 'YES' : 'NO') . ")\n";
-
-// 线程创建测试
-$start = microtime(true);
-$runtimes = [];
-for ($i = 0; $i < 100; $i++) {
-    $runtime = new Runtime();
-    $runtime->run(fn() => 1 + 1);
-    $runtimes[] = $runtime;
-}
-echo "线程创建: " . (microtime(true) - $start) * 1000 . " ms\n";
-
-// ThreadMap 测试
-$map = new ThreadMap(128);
-$start = microtime(true);
-for ($i = 0; $i < 10000; $i++) {
-    $map->set("k{$i}", "v{$i}");
-    $map->get("k{$i}");
-}
-$duration = (microtime(true) - $start) * 1000;
-echo "ThreadMap: " . round((20000 / $duration)) . " /s\n";
-
-// ThreadQueue 测试
-$queue = new ThreadQueue(20000);
-$start = microtime(true);
-for ($i = 0; $i < 10000; $i++) { $queue->push("i{$i}"); }
-for ($i = 0; $i < 10000; $i++) { $queue->shift(); }
-$duration = (microtime(true) - $start) * 1000;
-echo "ThreadQueue: " . round((20000 / $duration)) . " /s\n";
+```bash
+php benchmarks/bench_concurrency.php
 ```
+
+脚本会打印当前 PHP/ZTS/引擎信息与上述全部测试项，可跨环境复现对比。
