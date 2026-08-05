@@ -1,5 +1,6 @@
 # Composer
 /vendor/
+/composer.local.json
 
 # PHP
 *.phpo

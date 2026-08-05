@@ -4,27 +4,29 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "484309a610e8da48ffae639e280d9ea8",
+    "content-hash": "afe48bde784da02485dd6d4247b8c5b3",
     "packages": [
         {
             "name": "guzzlehttp/psr7",
-            "version": "2.9.0",
+            "version": "2.13.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/guzzle/psr7.git",
-                "reference": "7d0ed42f28e42d61352a7a79de682e5e67fec884"
+                "reference": "dad89620b7a6edb60c15858442eb2e408b45d8f4"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/guzzle/psr7/zipball/7d0ed42f28e42d61352a7a79de682e5e67fec884",
-                "reference": "7d0ed42f28e42d61352a7a79de682e5e67fec884",
+                "url": "https://api.github.com/repos/guzzle/psr7/zipball/dad89620b7a6edb60c15858442eb2e408b45d8f4",
+                "reference": "dad89620b7a6edb60c15858442eb2e408b45d8f4",
                 "shasum": ""
             },
             "require": {
                 "php": "^7.2.5 || ^8.0",
                 "psr/http-factory": "^1.0",
                 "psr/http-message": "^1.1 || ^2.0",
-                "ralouphie/getallheaders": "^3.0"
+                "ralouphie/getallheaders": "^3.0",
+                "symfony/deprecation-contracts": "^2.5 || ^3.0",
+                "symfony/polyfill-php80": "^1.25"
             },
             "provide": {
                 "psr/http-factory-implementation": "1.0",
@@ -32,9 +34,9 @@
             },
             "require-dev": {
                 "bamarni/composer-bin-plugin": "^1.8.2",
-                "http-interop/http-factory-tests": "0.9.0",
+                "http-interop/http-factory-tests": "1.1.0",
                 "jshttp/mime-db": "1.54.0.1",
-                "phpunit/phpunit": "^8.5.44 || ^9.6.25"
+                "phpunit/phpunit": "^8.5.52 || ^9.6.34"
             },
             "suggest": {
                 "laminas/laminas-httphandlerrunner": "Emit PSR-7 responses"
@@ -105,7 +107,7 @@
             ],
             "support": {
                 "issues": "https://github.com/guzzle/psr7/issues",
-                "source": "https://github.com/guzzle/psr7/tree/2.9.0"
+                "source": "https://github.com/guzzle/psr7/tree/2.13.0"
             },
             "funding": [
                 {
@@ -121,7 +123,7 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2026-03-10T16:41:02+00:00"
+            "time": "2026-07-16T22:23:49+00:00"
         },
         {
             "name": "kode/aop",
@@ -376,16 +378,16 @@
         },
         {
             "name": "kode/facade",
-            "version": "2.0.0",
+            "version": "v2.1.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/kodephp/facade.git",
-                "reference": "aafeef583690db4e4b7e104ceb18daf32841b8d4"
+                "reference": "b6687794669fd777fa0e778a7ff8f5f5139470a2"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/kodephp/facade/zipball/aafeef583690db4e4b7e104ceb18daf32841b8d4",
-                "reference": "aafeef583690db4e4b7e104ceb18daf32841b8d4",
+                "url": "https://api.github.com/repos/kodephp/facade/zipball/b6687794669fd777fa0e778a7ff8f5f5139470a2",
+                "reference": "b6687794669fd777fa0e778a7ff8f5f5139470a2",
                 "shasum": ""
             },
             "require": {
@@ -423,22 +425,22 @@
             ],
             "support": {
                 "issues": "https://github.com/kodephp/facade/issues",
-                "source": "https://github.com/kodephp/facade/tree/v2.0.0"
+                "source": "https://github.com/kodephp/facade/tree/v2.1.0"
             },
-            "time": "2026-03-13T03:42:06+00:00"
+            "time": "2026-07-25T10:14:51+00:00"
         },
         {
             "name": "kode/fibers",
-            "version": "2.13.0",
+            "version": "4.1.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/kodephp/fibers.git",
-                "reference": "d57f3c3c26ec93584aa453cbeb63b6068c0bdffe"
+                "reference": "46d280f83571be3f0fb3ef8e42fc0994621d1b1a"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/kodephp/fibers/zipball/d57f3c3c26ec93584aa453cbeb63b6068c0bdffe",
-                "reference": "d57f3c3c26ec93584aa453cbeb63b6068c0bdffe",
+                "url": "https://api.github.com/repos/kodephp/fibers/zipball/46d280f83571be3f0fb3ef8e42fc0994621d1b1a",
+                "reference": "46d280f83571be3f0fb3ef8e42fc0994621d1b1a",
                 "shasum": ""
             },
             "require": {
@@ -449,10 +451,15 @@
                 "kode/context": "^2.1",
                 "kode/facade": "^2.0",
                 "kode/http-client": "^2.1",
-                "php": "^8.1"
+                "php": "^8.3"
             },
             "require-dev": {
-                "phpunit/phpunit": "^12.5"
+                "amphp/amp": "^3.0",
+                "amphp/pipeline": "^1.2",
+                "phpunit/phpunit": "^12.5",
+                "react/event-loop": "^1.5",
+                "react/promise": "^3.2",
+                "revolt/event-loop": "^1.0"
             },
             "suggest": {
                 "ext-curl": "用于 HTTP 客户端 cURL 驱动",
@@ -481,57 +488,60 @@
                     "email": "382601296@qq.com"
                 }
             ],
-            "description": "高性能 Fiber 线程池与协程调度器",
+            "description": "Kode/Fibers - 高性能 PHP Fiber 协程调度器。提供协程池、上下文传递、分布式调度、断路器、负载均衡、RPC 通信（JSON/gRPC/WebSocket）、分布式事务（2PC/TCC/Saga）、多框架集成等企业级特性。",
             "support": {
                 "issues": "https://github.com/kodephp/fibers/issues",
-                "source": "https://github.com/kodephp/fibers/tree/v2.13.0"
+                "source": "https://github.com/kodephp/fibers/tree/v4.1.0"
             },
-            "time": "2026-03-19T15:51:05+00:00"
+            "time": "2026-08-05T03:35:59+00:00"
         },
         {
             "name": "kode/http-client",
-            "version": "2.3.0",
+            "version": "2.4.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/kodephp/http-client.git",
-                "reference": "bd6a0b88e2eb54a6c95dc5e2021694d9daeebc1e"
+                "reference": "706e8f3bd97a65fa3c305e6420daf3fb5cc1d5a1"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/kodephp/http-client/zipball/bd6a0b88e2eb54a6c95dc5e2021694d9daeebc1e",
-                "reference": "bd6a0b88e2eb54a6c95dc5e2021694d9daeebc1e",
+                "url": "https://api.github.com/repos/kodephp/http-client/zipball/706e8f3bd97a65fa3c305e6420daf3fb5cc1d5a1",
+                "reference": "706e8f3bd97a65fa3c305e6420daf3fb5cc1d5a1",
                 "shasum": ""
             },
             "require": {
+                "ext-json": "*",
                 "kode/context": "^2.1",
-                "php": "^8.1",
+                "php": "^8.3",
                 "psr/http-client": "^1.0",
-                "psr/http-message": "^1.0|^2.0"
+                "psr/http-factory": "^1.0",
+                "psr/http-message": "^2.0"
             },
             "require-dev": {
-                "amphp/http-client": "^4.0",
-                "amphp/socket": "^1.0",
-                "guzzlehttp/psr7": "^2.1",
-                "phpunit/phpunit": "^10.0|^11.0|^12.0"
+                "amphp/http-client": "^4.0|^5.0",
+                "amphp/socket": "^1.0|^2.0",
+                "guzzlehttp/psr7": "^2.6",
+                "phpunit/phpunit": "^11.0|^12.0"
             },
             "suggest": {
                 "amphp/http-client": "用于 Amp 异步 HTTP 客户端驱动",
-                "ext-curl": "用于 Curl 和 Fiber 驱动",
-                "ext-swoole": "用于 Swoole 协程支持",
-                "ext-swow": "用于 Swow 协程支持",
-                "guzzlehttp/psr7": "用于 PSR-7 消息实现",
-                "kode/fibers": "用于 Fiber 协程池和调度器"
+                "ext-curl": "用于 Curl / Fiber 驱动及并发请求",
+                "ext-swoole": "用于 Swoole 协程驱动",
+                "ext-swow": "用于 Swow 协程驱动",
+                "guzzlehttp/psr7": "PSR-7/PSR-17 消息实现（默认推荐）",
+                "kode/fibers": "用于 Fiber 协程池和调度器",
+                "nyholm/psr7": "轻量级 PSR-7/PSR-17 消息实现",
+                "psr/log": "用于 LoggingMiddleware 的 PSR-3 日志集成"
             },
             "type": "library",
             "extra": {
                 "branch-alias": {
-                    "dev-main": "2.3.x-dev"
+                    "dev-main": "2.4.x-dev"
                 }
             },
             "autoload": {
                 "psr-4": {
-                    "Kode\\HttpClient\\": "src/",
-                    "Kode\\HttpClient\\Context\\": "src/Context/"
+                    "Kode\\HttpClient\\": "src/"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -549,12 +559,14 @@
             "keywords": [
                 "async",
                 "client",
+                "concurrent",
                 "coroutine",
                 "fiber",
                 "http",
                 "middleware",
-                "php8",
-                "php85",
+                "php83",
+                "php84",
+                "psr-17",
                 "psr-18",
                 "psr-7",
                 "swoole",
@@ -564,7 +576,7 @@
                 "issues": "https://github.com/kodephp/http-client/issues",
                 "source": "https://github.com/kodephp/http-client"
             },
-            "time": "2026-03-13T14:45:27+00:00"
+            "time": "2026-08-04T15:59:05+00:00"
         },
         {
             "name": "psr/container",
@@ -822,6 +834,161 @@
                 "source": "https://github.com/ralouphie/getallheaders/tree/develop"
             },
             "time": "2019-03-08T08:55:37+00:00"
+        },
+        {
+            "name": "symfony/deprecation-contracts",
+            "version": "v3.7.1",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/symfony/deprecation-contracts.git",
+                "reference": "f3202fa1b5097b0af062dc978b32ecf63404e31d"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/symfony/deprecation-contracts/zipball/f3202fa1b5097b0af062dc978b32ecf63404e31d",
+                "reference": "f3202fa1b5097b0af062dc978b32ecf63404e31d",
+                "shasum": ""
+            },
+            "require": {
+                "php": ">=8.1"
+            },
+            "type": "library",
+            "extra": {
+                "thanks": {
+                    "url": "https://github.com/symfony/contracts",
+                    "name": "symfony/contracts"
+                },
+                "branch-alias": {
+                    "dev-main": "3.7-dev"
+                }
+            },
+            "autoload": {
+                "files": [
+                    "function.php"
+                ]
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Nicolas Grekas",
+                    "email": "p@tchwork.com"
+                },
+                {
+                    "name": "Symfony Community",
+                    "homepage": "https://symfony.com/contributors"
+                }
+            ],
+            "description": "A generic function and convention to trigger deprecation notices",
+            "homepage": "https://symfony.com",
+            "support": {
+                "source": "https://github.com/symfony/deprecation-contracts/tree/v3.7.1"
+            },
+            "funding": [
+                {
+                    "url": "https://symfony.com/sponsor",
+                    "type": "custom"
+                },
+                {
+                    "url": "https://github.com/fabpot",
+                    "type": "github"
+                },
+                {
+                    "url": "https://github.com/nicolas-grekas",
+                    "type": "github"
+                },
+                {
+                    "url": "https://tidelift.com/funding/github/packagist/symfony/symfony",
+                    "type": "tidelift"
+                }
+            ],
+            "time": "2026-06-05T06:23:12+00:00"
+        },
+        {
+            "name": "symfony/polyfill-php80",
+            "version": "v1.37.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/symfony/polyfill-php80.git",
+                "reference": "dfb55726c3a76ea3b6459fcfda1ec2d80a682411"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/symfony/polyfill-php80/zipball/dfb55726c3a76ea3b6459fcfda1ec2d80a682411",
+                "reference": "dfb55726c3a76ea3b6459fcfda1ec2d80a682411",
+                "shasum": ""
+            },
+            "require": {
+                "php": ">=7.2"
+            },
+            "type": "library",
+            "extra": {
+                "thanks": {
+                    "url": "https://github.com/symfony/polyfill",
+                    "name": "symfony/polyfill"
+                }
+            },
+            "autoload": {
+                "files": [
+                    "bootstrap.php"
+                ],
+                "psr-4": {
+                    "Symfony\\Polyfill\\Php80\\": ""
+                },
+                "classmap": [
+                    "Resources/stubs"
+                ]
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Ion Bazan",
+                    "email": "ion.bazan@gmail.com"
+                },
+                {
+                    "name": "Nicolas Grekas",
+                    "email": "p@tchwork.com"
+                },
+                {
+                    "name": "Symfony Community",
+                    "homepage": "https://symfony.com/contributors"
+                }
+            ],
+            "description": "Symfony polyfill backporting some PHP 8.0+ features to lower PHP versions",
+            "homepage": "https://symfony.com",
+            "keywords": [
+                "compatibility",
+                "polyfill",
+                "portable",
+                "shim"
+            ],
+            "support": {
+                "source": "https://github.com/symfony/polyfill-php80/tree/v1.37.0"
+            },
+            "funding": [
+                {
+                    "url": "https://symfony.com/sponsor",
+                    "type": "custom"
+                },
+                {
+                    "url": "https://github.com/fabpot",
+                    "type": "github"
+                },
+                {
+                    "url": "https://github.com/nicolas-grekas",
+                    "type": "github"
+                },
+                {
+                    "url": "https://tidelift.com/funding/github/packagist/symfony/symfony",
+                    "type": "tidelift"
+                }
+            ],
+            "time": "2026-04-10T16:19:22+00:00"
         }
     ],
     "packages-dev": [
@@ -887,20 +1054,19 @@
         },
         {
             "name": "nikic/php-parser",
-            "version": "v5.7.0",
+            "version": "v5.8.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/nikic/PHP-Parser.git",
-                "reference": "dca41cd15c2ac9d055ad70dbfd011130757d1f82"
+                "reference": "044a6a392ff8ad0d61f14370a5fbbd0a0107152f"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/nikic/PHP-Parser/zipball/dca41cd15c2ac9d055ad70dbfd011130757d1f82",
-                "reference": "dca41cd15c2ac9d055ad70dbfd011130757d1f82",
+                "url": "https://api.github.com/repos/nikic/PHP-Parser/zipball/044a6a392ff8ad0d61f14370a5fbbd0a0107152f",
+                "reference": "044a6a392ff8ad0d61f14370a5fbbd0a0107152f",
                 "shasum": ""
             },
             "require": {
-                "ext-ctype": "*",
                 "ext-json": "*",
                 "ext-tokenizer": "*",
                 "php": ">=7.4"
@@ -939,9 +1105,9 @@
             ],
             "support": {
                 "issues": "https://github.com/nikic/PHP-Parser/issues",
-                "source": "https://github.com/nikic/PHP-Parser/tree/v5.7.0"
+                "source": "https://github.com/nikic/PHP-Parser/tree/v5.8.0"
             },
-            "time": "2025-12-06T11:56:16+00:00"
+            "time": "2026-07-04T14:30:18+00:00"
         },
         {
             "name": "phar-io/manifest",
@@ -1384,24 +1550,24 @@
         },
         {
             "name": "phpunit/phpunit",
-            "version": "10.5.63",
+            "version": "10.5.64",
             "source": {
                 "type": "git",
                 "url": "https://github.com/sebastianbergmann/phpunit.git",
-                "reference": "33198268dad71e926626b618f3ec3966661e4d90"
+                "reference": "0e8c1d19cea35ad97d4887f363d07c78e30fbf06"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/sebastianbergmann/phpunit/zipball/33198268dad71e926626b618f3ec3966661e4d90",
-                "reference": "33198268dad71e926626b618f3ec3966661e4d90",
+                "url": "https://api.github.com/repos/sebastianbergmann/phpunit/zipball/0e8c1d19cea35ad97d4887f363d07c78e30fbf06",
+                "reference": "0e8c1d19cea35ad97d4887f363d07c78e30fbf06",
                 "shasum": ""
             },
             "require": {
                 "ext-dom": "*",
+                "ext-filter": "*",
                 "ext-json": "*",
                 "ext-libxml": "*",
                 "ext-mbstring": "*",
-                "ext-xml": "*",
                 "ext-xmlwriter": "*",
                 "myclabs/deep-copy": "^1.13.4",
                 "phar-io/manifest": "^2.0.4",
@@ -1465,31 +1631,15 @@
             "support": {
                 "issues": "https://github.com/sebastianbergmann/phpunit/issues",
                 "security": "https://github.com/sebastianbergmann/phpunit/security/policy",
-                "source": "https://github.com/sebastianbergmann/phpunit/tree/10.5.63"
+                "source": "https://github.com/sebastianbergmann/phpunit/tree/10.5.64"
             },
             "funding": [
                 {
-                    "url": "https://phpunit.de/sponsors.html",
-                    "type": "custom"
-                },
-                {
-                    "url": "https://github.com/sebastianbergmann",
-                    "type": "github"
-                },
-                {
-                    "url": "https://liberapay.com/sebastianbergmann",
-                    "type": "liberapay"
-                },
-                {
-                    "url": "https://thanks.dev/u/gh/sebastianbergmann",
-                    "type": "thanks_dev"
-                },
-                {
-                    "url": "https://tidelift.com/funding/github/packagist/phpunit/phpunit",
-                    "type": "tidelift"
+                    "url": "https://phpunit.de/sponsoring.html",
+                    "type": "other"
                 }
             ],
-            "time": "2026-01-27T05:48:37+00:00"
+            "time": "2026-07-06T14:50:35+00:00"
         },
         {
             "name": "sebastian/cli-parser",
@@ -2498,7 +2648,7 @@
     "aliases": [],
     "minimum-stability": "stable",
     "stability-flags": {},
-    "prefer-stable": true,
+    "prefer-stable": false,
     "prefer-lowest": false,
     "platform": {
         "php": ">=8.3"
