@@ -4,7 +4,7 @@
 
 [![PHP Version](https://img.shields.io/badge/PHP-%3E%3D8.3-blue)](https://php.net)
 [![License](https://img.shields.io/badge/License-Apache--2.0-green)](LICENSE)
-[![Package Version](https://img.shields.io/badge/Version-1.8.0-orange)](composer.json)
+[![Package Version](https://img.shields.io/badge/Version-1.9.0-orange)](composer.json)
 [![Engines](https://img.shields.io/badge/Engines-parallel%20%7C%20process%20%7C%20sync-purple)](docs/ENGINE.md)
 
 ## 目录
@@ -111,7 +111,7 @@
 | 要求 | 说明 |
 |------|------|
 | PHP 版本 | **>= 8.3**（使用类型化类常量、`json_validate()`、`#[\Override]` 等特性） |
-| 必需包 | kode/fibers, kode/context, kode/facade |
+| 必需包 | kode/context ^3.0, kode/facade ^3.0, kode/fibers ^4.1 |
 | 可选扩展 | ext-parallel（真线程）、ext-pcntl + ext-posix（多进程）、ext-curl（CurlMulti）、ext-sockets（集群） |
 
 > 一个扩展都不装也能运行：库会自动选择可用引擎，只是并行度不同。
@@ -719,25 +719,26 @@ $runtime->run($consumer);
 
 ---
 
-## 性能压测
+## 性能压测（v1.9.0，stock PHP 8.3 非 ZTS，实测可复现）
 
 ```
 ========================================
-     Kode/Parallel 性能压测报告
+     Kode/Parallel 性能压测报告 (v1.9.0)
+     PHP 8.3.31 | ZTS: NO | engine: process
 ========================================
 
-Task 创建: 1.52 μs/个
-简单任务: 7,958 tasks/sec
-Channel通信: 22,000+ ops/sec
-Mutex操作: 4,200,000+ ops/sec
-
-并行加速比:
-  4任务: 3.21x (效率 80.3%)
-  8任务: 5.35x (效率 66.9%)
- 10任务: 5.63x (效率 56.3%)
+进程引擎 submit+get ×200        ≈ 2.9k ops/s  (fork 模型固有开销)
+Concurrency\Channel send+recv    ≈ 16.7M ops/s (进程内，纯内存)
+Concurrency\Lock withLock 自增   ≈ 109k ops/s  (跨进程文件锁)
+Concurrency\Atomic 进程内 inc     ≈ 16.6M ops/s (v1.9.0 内存快路径)
+Concurrency\Atomic 跨进程 inc     ≈ 19.7k ops/s (6 进程 ×5k，零丢失)
+Concurrency\Barrier 跨进程会合    ≈ 372 回合/s  (4 方 ×50 回合)
 ```
 
-详见 [BENCHMARK.md](docs/BENCHMARK.md)
+> 同类对比基准：`php benchmarks/bench_swoole.php`（需 ZTS + `--enable-swoole-thread`，否则优雅跳过）。
+
+调优方法见 [docs/PERFORMANCE.md](docs/PERFORMANCE.md)；完整数据与 Swoole 6.2 对标见
+[BENCHMARK.md](docs/BENCHMARK.md) 与 [SWOOLE_COMPARISON.md](docs/SWOOLE_COMPARISON.md)。
 
 ---
 
@@ -823,6 +824,7 @@ $runtime->run(fn($args) => $args['ch']->send($data), ['ch' => $channel]);
 | [PCNTL_COMPARISON.md](docs/PCNTL_COMPARISON.md) | 与 pcntl 对比 |
 | [SWOOLE_COMPARISON.md](docs/SWOOLE_COMPARISON.md) | 与 Swoole 对比 |
 | [BENCHMARK.md](docs/BENCHMARK.md) | 完整性能压测数据 |
+| [PERFORMANCE.md](docs/PERFORMANCE.md) | 调优方法与最佳实践 |
 
 ---
 

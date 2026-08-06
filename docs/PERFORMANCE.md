@@ -1,0 +1,113 @@
+# Kode/Parallel 调优指南
+
+> 目标：在「引擎无关、可移植、跨进程安全」的前提下，把吞吐与延迟推到合理上限。
+> 配合 `docs/BENCHMARK.md`（实测数据）与 `docs/SWOOLE_COMPARISON.md`（同类对比）阅读。
+
+---
+
+## 1. 先选对引擎（决定性能天花板）
+
+`EngineFactory` 探测优先级：**`parallel`（真线程，需 ZTS + ext-parallel） ＞ `process`（多进程，需 pcntl） ＞ `sync`（同步回退）**。
+
+| 你的环境 | 默认引擎 | 说明 |
+|----------|----------|------|
+| 装了 `ext-parallel`（ZTS PHP） | `parallel` | 真线程，与 Swoole 线程同档 |
+| 普通 Linux/macOS（仅 pcntl） | `process` | 本仓库默认路径 |
+| Windows / 受限沙箱 | `sync` | 单进程顺序执行，API 一致 |
+
+**调优点**：生产环境若追求极致同进程吞吐，优先部署 **ZTS + ext-parallel**；否则 `process` 引擎已足够，
+且 `Lock`/`Atomic`/`Barrier` 仍可跨进程共享状态。可用 `EngineFactory::detect()` 确认当前引擎。
+
+---
+
+## 2. 并发度：不要超过 CPU 核数太多
+
+`WorkerPool` / `Runtime` 的并发上限建议设为 **CPU 核数**（或核数 + 1~2）：
+
+```php
+use Kode\Parallel\Pool\WorkerPool;
+
+$pool = new WorkerPool(concurrency: (int) shell_exec('nproc') ?: 4);
+```
+
+- 计算密集型：并发 = 核数即可，过多反而因上下文切换掉速；
+- IO 密集型（网络/磁盘）：可适当高于核数（如 2×），让等待时间被其他任务填充；
+- `process` 引擎每个 worker 是一个独立进程（fork），并发越高内存占用越大，注意上限。
+
+---
+
+## 3. 计数/互斥：按「是否跨进程」选原语
+
+这是 v1.9.0 最重要的调优点。
+
+| 场景 | 推荐原语 | 吞吐量级（实测） |
+|------|----------|------------------|
+| 进程内高频计数 | `new Atomic($n)`（**未命名**，纯内存） | ≈ 16.6M ops/s |
+| 跨进程共享计数 | `Atomic::named($n, 'name')` | ≈ 19.7k ops/s |
+| 跨进程互斥临界区 | `Lock::named('name')->withLock(fn)` | ≈ 109k ops/s |
+| 进程内消息传递 | `new Channel(0)`（无界） | ≈ 16.7M ops/s |
+| 跨进程多进程会合 | `Barrier::named($parties, 'name')` | ≈ 372 回合/s |
+
+**原则**：
+- **只在需要跨进程共享时才付文件锁的代价**。进程内计数器、累加器一律用**未命名 `Atomic`**（内存快路径），
+  切勿为了「统一风格」把进程内计数也命名化——会慢约 840×。
+- 高频临界区请缩小 `withLock` 闭包体，只把绝对必要的几行放进去；锁内不要做 IO / 网络 / 大循环。
+
+---
+
+## 4. 减少序列化开销（process / parallel 引擎）
+
+`process` 引擎通过 `pcntl_fork` + 管道在父子进程间传递**参数与返回值**，会触发 `serialize/unserialize`：
+
+- **传递大数组/对象代价高**：把入参压到最小（传 id 而非整条记录，子进程内再查）；
+- **返回值同理**：返回摘要（计数、状态、少量字段）而非完整对象树；
+- 需要共享大量只读数据 → 用 `kode/context` 的进程级上下文，或在 fork 前准备好，避免每个任务重复传递；
+- `sync` 引擎无序列化（同进程直接调用），调试期用它最快定位逻辑问题。
+
+---
+
+## 5. Channel vs 返回值：选对通信方式
+
+- **一对多结果收集**：`Futures::all([...])` 或 `Runtime::run()->get()` 聚合，最省心；
+- **生产者/消费者流**：用 `Concurrency\Channel` 在**同一进程内**做流式传递（≈16.7M ops/s）；
+- **跨进程流式**：`process` 引擎下 Channel 是进程内结构，跨进程请用 `Atomic`/`Barrier` 协调 + 返回值汇总，
+  或借助 `Cluster`（见 `CLUSTER.md`）做跨机器。
+
+---
+
+## 6. 任务粒度：粗一点更快
+
+`process` 引擎的「fork + 取结果」单次成本约 0.3~0.4 ms（见 BENCHMARK：submit+get ≈ 2.9k ops/s）。
+因此：
+
+- ❌ 不要把「循环里每个元素」当成一个任务 → 调度开销吃掉收益；
+- ✅ 把一批（如 1k~10k 个元素）作为一个任务整体下发，任务内本地循环处理；
+- ✅ `WorkerPool::map($bigArray, fn)` 内部已做分批，直接用它最稳。
+
+---
+
+## 7. 用 Futures 组合子避免等待空转
+
+- `Futures::all([...])`：等全部完成，适合「扇出后统一汇总」；
+- `Futures::select([...])` / `race`：谁先完成先处理，适合「多个异构数据源取最快」；
+- `then/map/catch` 链式：把「A 完成 → 用其结果跑 B」写成依赖链，避免手动 `get()` 阻塞。
+
+---
+
+## 8. 调试与回归
+
+- 本地先跑 `sync` 引擎验证逻辑（无 fork，栈清晰、可单步）；
+- 用 `benchmarks/bench_concurrency.php` 做**回归基线**：升级 kode 栈或改原语后重跑，对比 ops/s 是否退化；
+- `benchmarks/bench_swoole.php` 在 ZTS + Swoole 线程构建上跑，得到同类基准做横向对标。
+
+---
+
+## 9. 一句话调优清单
+
+1. 部署 ZTS + ext-parallel 可吃满真线程性能；
+2. 并发度 ≈ CPU 核数（IO 型可更高）；
+3. 进程内计数用**未命名 `Atomic`**（≈16.6M ops/s）；跨进程才用命名 `Atomic`/`Lock`/`Barrier`；
+4. 任务参数/返回值尽量小，避免序列化；
+5. 任务粒度粗一点（批量下发）；
+6. 用 `Futures::all/select` 替代手动轮询 `get()`；
+7. 跨进程高频计数接受「文件锁 ≈ 19.7k ops/s」的合理成本，或用 `Cluster` 分摊。
