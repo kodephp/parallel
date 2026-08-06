@@ -45,13 +45,44 @@ $pool = new WorkerPool(concurrency: (int) shell_exec('nproc') ?: 4);
 | 进程内高频计数 | `new Atomic($n)`（**未命名**，纯内存） | ≈ 16.6M ops/s |
 | 跨进程共享计数 | `Atomic::named($n, 'name')` | ≈ 19.7k ops/s |
 | 跨进程互斥临界区 | `Lock::named('name')->withLock(fn)` | ≈ 109k ops/s |
+| 并发度限制（连接池/限流） | `Semaphore::named($n, 'name')` | 进程内 ≈ 7.7M ops/s |
 | 进程内消息传递 | `new Channel(0)`（无界） | ≈ 16.7M ops/s |
 | 跨进程多进程会合 | `Barrier::named($parties, 'name')` | ≈ 372 回合/s |
 
 **原则**：
 - **只在需要跨进程共享时才付文件锁的代价**。进程内计数器、累加器一律用**未命名 `Atomic`**（内存快路径），
   切勿为了「统一风格」把进程内计数也命名化——会慢约 840×。
+- **限流/连接池用 `Semaphore` 而非反复 `Lock`**：`Semaphore(8)` 允许 8 个并发，比「单锁串行」吞吐高得多；
+  未命名 `Semaphore` 进程内约 7.7M ops/s（acquire+release），命名则跨进程共享同一许可额度。
 - 高频临界区请缩小 `withLock` 闭包体，只把绝对必要的几行放进去；锁内不要做 IO / 网络 / 大循环。
+
+---
+
+## 3b. 非阻塞锁 / 原子：弱竞争下避免阻塞
+
+`Lock` 与 `Atomic` 都提供非阻塞入口，适合「拿不到锁就先干点别的 / 退避重试」的调优模式：
+
+```php
+use Kode\Parallel\Concurrency\{Lock, Atomic};
+
+$lock = Lock::named('hot');
+// 非阻塞：拿不到立即返回 false，不阻塞等待
+if ($lock->tryLock()) {
+    try { /* 临界区 */ } finally { $lock->unlock(); }
+} else {
+    // 退避或做别的工作
+}
+
+// 带超时：最多等 50ms，否则抛 ParallelException
+$lock->withLockTimeout(50, fn () => critical());
+
+// 原子非阻塞自增：弱竞争下零等待
+$at = new Atomic(0);
+if ($at->tryAdd(1)) { /* 成功 */ } else { /* 退避重试 */ }
+```
+
+**适用**：自旋/退避调度、超时保护关键路径、避免长尾任务被慢锁拖死。重争用下仍建议阻塞 `withLock`，
+因为非阻塞失败会空转消耗 CPU。
 
 ---
 

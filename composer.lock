@@ -191,16 +191,16 @@
         },
         {
             "name": "kode/context",
-            "version": "3.0.0",
+            "version": "3.1.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/kodephp/context.git",
-                "reference": "aa0cff4d8296afa5c35830965c4d275ba769b47c"
+                "reference": "7aa255fa6e126308916bb20e2df500b6bf202ae5"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/kodephp/context/zipball/aa0cff4d8296afa5c35830965c4d275ba769b47c",
-                "reference": "aa0cff4d8296afa5c35830965c4d275ba769b47c",
+                "url": "https://api.github.com/repos/kodephp/context/zipball/7aa255fa6e126308916bb20e2df500b6bf202ae5",
+                "reference": "7aa255fa6e126308916bb20e2df500b6bf202ae5",
                 "shasum": ""
             },
             "require": {
@@ -261,7 +261,7 @@
                 "issues": "https://github.com/kodephp/context/issues",
                 "source": "https://github.com/kodephp/context"
             },
-            "time": "2026-08-04T15:44:00+00:00"
+            "time": "2026-08-06T03:03:31+00:00"
         },
         {
             "name": "kode/facade",

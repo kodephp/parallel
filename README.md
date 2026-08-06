@@ -4,7 +4,7 @@
 
 [![PHP Version](https://img.shields.io/badge/PHP-%3E%3D8.3-blue)](https://php.net)
 [![License](https://img.shields.io/badge/License-Apache--2.0-green)](LICENSE)
-[![Package Version](https://img.shields.io/badge/Version-1.9.0-orange)](composer.json)
+[![Package Version](https://img.shields.io/badge/Version-1.10.0-orange)](composer.json)
 [![Engines](https://img.shields.io/badge/Engines-parallel%20%7C%20process%20%7C%20sync-purple)](docs/ENGINE.md)
 
 ## 目录
@@ -84,7 +84,7 @@
 | **Events** | 事件循环驱动 |
 | **Fiber** | PHP Fiber 协程封装（基于 kode/fibers） |
 | **Sync** | 同步原语：Mutex、Semaphore、Cond、Barrier（parallel 引擎） |
-| **Concurrency** | **引擎无关同步原语**：`Lock` / `Atomic` / `AtomicLong` / `Barrier` / `Channel`，无需 ext-parallel / ZTS，对标 Swoole 6 `Thread\Lock/Atomic/Barrier/Queue` |
+| **Concurrency** | **引擎无关同步原语**：`Lock` / `Atomic` / `AtomicLong` / `Barrier` / `Channel` / `Semaphore`，无需 ext-parallel / ZTS，对标 Swoole 6 `Thread\Lock/Atomic/Barrier/Queue` |
 | **Pipe** | 进程间通信管道 |
 | **CurlMulti** | 并行 HTTP 请求封装 |
 | **Node** | 集群节点表示（跨机器） |
@@ -719,11 +719,11 @@ $runtime->run($consumer);
 
 ---
 
-## 性能压测（v1.9.0，stock PHP 8.3 非 ZTS，实测可复现）
+## 性能压测（v1.10.0，stock PHP 8.3 非 ZTS，实测可复现）
 
 ```
 ========================================
-     Kode/Parallel 性能压测报告 (v1.9.0)
+     Kode/Parallel 性能压测报告 (v1.10.0)
      PHP 8.3.31 | ZTS: NO | engine: process
 ========================================
 
@@ -732,10 +732,13 @@ Concurrency\Channel send+recv    ≈ 16.7M ops/s (进程内，纯内存)
 Concurrency\Lock withLock 自增   ≈ 109k ops/s  (跨进程文件锁)
 Concurrency\Atomic 进程内 inc     ≈ 16.6M ops/s (v1.9.0 内存快路径)
 Concurrency\Atomic 跨进程 inc     ≈ 19.7k ops/s (6 进程 ×5k，零丢失)
+Concurrency\Semaphore 进程内      ≈ 7.7M ops/s (v1.10.0 新增，acquire+release)
 Concurrency\Barrier 跨进程会合    ≈ 372 回合/s  (4 方 ×50 回合)
 ```
 
-> 同类对比基准：`php benchmarks/bench_swoole.php`（需 ZTS + `--enable-swoole-thread`，否则优雅跳过）。
+> 四角同类对比基线（同口径，可并排比较）：
+> `php benchmarks/bench_concurrency.php`（kode）｜`bench_pcntl.php`（裸 pcntl 地板）｜
+> `bench_swoole.php`（Swoole 6.2 线程，需 ZTS）｜`bench_ext_parallel.php`（ext-parallel 真线程，需 ZTS）。
 
 调优方法见 [docs/PERFORMANCE.md](docs/PERFORMANCE.md)；完整数据与 Swoole 6.2 对标见
 [BENCHMARK.md](docs/BENCHMARK.md) 与 [SWOOLE_COMPARISON.md](docs/SWOOLE_COMPARISON.md)。

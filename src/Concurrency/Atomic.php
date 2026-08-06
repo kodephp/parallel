@@ -162,6 +162,37 @@ class Atomic
     }
 
     /**
+     * 非阻塞原子加：尝试获取底层锁，成功则执行并返回 true，锁被占用则立即返回 false。
+     *
+     * 用于自旋/退避调优：在弱竞争场景下避免阻塞等待，失败后可自行退避重试。
+     */
+    public function tryAdd(int $delta = 1): bool
+    {
+        if (!$this->shared) {
+            $this->memory += $delta;
+            return true;
+        }
+        if (!$this->lock->tryLock()) {
+            return false;
+        }
+        try {
+            $v = $this->readValue() + $delta;
+            $this->writeValue($v);
+            return true;
+        } finally {
+            $this->lock->unlock();
+        }
+    }
+
+    /**
+     * 非阻塞原子减：见 {@see tryAdd}。
+     */
+    public function trySub(int $delta = 1): bool
+    {
+        return $this->tryAdd(-$delta);
+    }
+
+    /**
      * 原子自减 1，返回减之后的值。
      */
     public function dec(): int

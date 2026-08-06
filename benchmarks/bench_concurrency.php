@@ -18,6 +18,7 @@ use Kode\Parallel\Concurrency\Atomic;
 use Kode\Parallel\Concurrency\Barrier;
 use Kode\Parallel\Concurrency\Channel;
 use Kode\Parallel\Concurrency\Lock;
+use Kode\Parallel\Concurrency\Semaphore;
 use Kode\Parallel\Engine\EngineFactory;
 use Kode\Parallel\Future\Futures;
 use Kode\Parallel\Pool\WorkerPool;
@@ -226,6 +227,20 @@ $elapsedMs = (hrtime(true) - $start) / 1_000_000;
 printf("  barrier 回合 x%s (每回合 %d 方)  %9.2f ms\n", $rounds, $parties, $elapsedMs);
 $rows['Barrier 跨进程 ' . $rounds . ' 回合'] = $rounds / ($elapsedMs / 1000);
 $rt->close();
+
+// ---------------------------------------------------------------------------
+// 9) 引擎无关 Semaphore（计数信号量，进程内快路径）
+// ---------------------------------------------------------------------------
+echo "\n【9】Concurrency\\Semaphore（进程内快路径，纯内存）\n";
+$sem = new Semaphore(1_000_000);
+$n = 5_000_000;
+$rows['Semaphore 进程内 acquire+release x' . number_format($n)] = bench("  acquire+release x$n", $n, function () use ($sem, $n) {
+    for ($i = 0; $i < $n; $i++) {
+        $sem->acquire(1);
+        $sem->release(1);
+    }
+});
+echo "    最终可用=" . $sem->getAvailable() . "（期望 1,000,000）\n";
 
 // ---------------------------------------------------------------------------
 // 汇总

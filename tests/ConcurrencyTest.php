@@ -9,6 +9,7 @@ use Kode\Parallel\Concurrency\AtomicLong;
 use Kode\Parallel\Concurrency\Barrier;
 use Kode\Parallel\Concurrency\Channel;
 use Kode\Parallel\Concurrency\Lock;
+use Kode\Parallel\Concurrency\Semaphore;
 use Kode\Parallel\Engine\EngineFactory;
 use Kode\Parallel\Runtime\Runtime;
 use PHPUnit\Framework\TestCase;
@@ -159,5 +160,87 @@ final class ConcurrencyTest extends TestCase
         $this->assertTrue($ch->isFull());
         $this->assertFalse($ch->sendNonBlocking('b'), '有界通道满时应拒绝非阻塞发送');
         $this->assertSame('a', $ch->recvNonBlocking());
+    }
+
+    public function testSemaphoreInProcess(): void
+    {
+        $sem = new Semaphore(2);
+        $this->assertSame(2, $sem->getAvailable());
+
+        $this->assertTrue($sem->tryAcquire(1));
+        $this->assertSame(1, $sem->getAvailable());
+        $this->assertFalse($sem->tryAcquire(2), '剩余 1 个许可，申请 2 个应失败');
+
+        $sem->release(1);
+        $this->assertSame(2, $sem->getAvailable());
+        $this->assertSame('ok', $sem->withPermits(2, static fn () => 'ok'));
+        $this->assertSame(2, $sem->getAvailable(), 'withPermits 结束后应自动释放');
+    }
+
+    /**
+     * 命名信号量在多个 fork 子进程间共享同一许可额度，acquire/release 无丢失。
+     * 重复多轮以暴露并发初始化竞态（回归防护）。
+     */
+    public function testNamedSemaphoreAcrossProcesses(): void
+    {
+        $count = 6;
+
+        for ($round = 0; $round < 8; $round++) {
+            $name = 'ut_sem_' . uniqid('', true);
+            $rt = new Runtime(null, 'process');
+            $futs = [];
+            for ($i = 0; $i < $count; $i++) {
+                $futs[] = $rt->run(static function (array $args) {
+                    $sem = Semaphore::named($args['permits'], $args['name']);
+                    // 每个进程先占用 1 个许可，再释放，确保额度守恒
+                    $sem->acquire(1);
+                    $availDuringHold = $sem->getAvailable();
+                    $sem->release(1);
+                    return $availDuringHold;
+                }, ['permits' => 1, 'name' => $name]);
+            }
+
+            $during = [];
+            foreach ($futs as $f) {
+                $during[] = $f->get();
+            }
+            $rt->close();
+
+            // 命名信号量初始 1 个许可：任一进程持有期间，其余进程看到的可用数应为 0
+            foreach ($during as $v) {
+                $this->assertSame(0, $v, "第 {$round} 轮：单许可信号量被持有时其他进程应看到 0 可用");
+            }
+
+            // 释放后应恢复 1 个可用（额度守恒，无丢失）
+            $check = Semaphore::named(1, $name);
+            $this->assertSame(1, $check->getAvailable(), "第 {$round} 轮：释放后额度应恢复为 1");
+        }
+    }
+
+    public function testLockWithLockTimeout(): void
+    {
+        $lock = new Lock();
+        $this->assertSame('done', $lock->withLockTimeout(100, static fn () => 'done'));
+        $this->assertFalse($lock->isLocked());
+    }
+
+    public function testLockWithLockTimeoutThrowsOnContention(): void
+    {
+        $name = 'ut_to_' . uniqid();
+        $holder = Lock::named($name);
+        $this->assertTrue($holder->tryLock());
+
+        $waiter = Lock::named($name);
+        $this->expectException(\Kode\Parallel\Exception\ParallelException::class);
+        $waiter->withLockTimeout(50, static fn () => 'never');
+    }
+
+    public function testAtomicTryAddTrySub(): void
+    {
+        $a = new Atomic(0);
+        $this->assertTrue($a->tryAdd(5));
+        $this->assertSame(5, $a->get());
+        $this->assertTrue($a->trySub(2));
+        $this->assertSame(3, $a->get());
     }
 }

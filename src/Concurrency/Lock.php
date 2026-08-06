@@ -78,4 +78,25 @@ final class Lock
             $this->impl->unlock();
         }
     }
+
+    /**
+     * 在锁保护下执行回调，但仅等待最多 $timeoutMs 毫秒；超时未获锁则抛出。
+     *
+     * 用于超时/退避调优：避免关键路径被长期阻塞。
+     *
+     * @template T
+     * @param callable(): T $callback
+     * @return T
+     */
+    public function withLockTimeout(int $timeoutMs, callable $callback): mixed
+    {
+        if (!$this->impl->lock($timeoutMs)) {
+            throw new ParallelException('获取锁超时（' . $timeoutMs . 'ms）');
+        }
+        try {
+            return $callback();
+        } finally {
+            $this->impl->unlock();
+        }
+    }
 }
