@@ -1,7 +1,7 @@
 # Kode/Parallel 性能基准报告
 
-> 版本：`v1.15.0` ｜ kode 栈：`kode/context 3.1.0` / `kode/facade 3.2.0` / `kode/fibers 4.5.0`
-> 本次重点：**单线程 vs 多线程真实提速审计、跨线程/进程数据同步文档、Futures::race() 轮询路径 bug 修复**，所有数据均为 ZTS 实测多跑取稳定值。
+> 版本：`v1.16.0` ｜ kode 栈：`kode/context 3.1.0` / `kode/facade 3.2.0` / `kode/fibers 4.5.0`
+> 本次重点：**Futures 组合器层可复现压测（all/settle/race/any/select 开销量化）、组合器超时路径回归测试、单线程 vs 多线程真实提速审计、跨线程/进程数据同步文档**。所有数据均为 ZTS 实测。
 > 下方数据均为真实运行结果（非估算），场景化解读见 [USE_CASES.md](USE_CASES.md)。
 
 ## 测试环境（本仓库实测，可复现）
@@ -227,10 +227,37 @@ $db->withPermits(1, fn () => query());  // 至多 8 个并发
    - 基准可信度：`bench_curl.php` 改为自带本地并发服务，`?delay=` 真实生效，顺序 curl 从失真的 46ms 修正为约 5 秒（4930~5434ms，随环境）；
    - 健壮性：批量回收 `mapBatch` 的 pending、`CurlMulti` 关闭泄漏的句柄并加调度死锁守卫（避免 100% CPU 空转）。
 
+## v1.16.0 新增：Futures 组合器层开销（ZTS 实测，可复现）
+
+`benchmarks/bench_futures.php` 量化组合器本身的开销。核心结论：**v1.14.0 的指数退避让组合器在任务完成瞬间即感知 `done()`，不空转睡满 500µs**——因此短任务的回收几乎零额外延迟。
+
+**A. 纯组合器开销**（已就绪 future，无 sleep，仅轮询循环 + 归并）：
+
+| N（future 数） | `Futures::all` 耗时 | 单 future 开销 |
+|---|---|---|
+| 1,000 | 0.12 ms | 116 ns |
+| 10,000 | 1.21 ms | 121 ns |
+| 40,000 | 4.85 ms | 121 ns |
+
+**B. 真线程收集开销**（N 个 trivial 任务并行，`Futures::all` 等待回收，11 线程）：
+
+| N（任务数） | 并发度 | 回收耗时 | 单任务开销 | 等效吞吐 |
+|---|---|---|---|---|
+| 1,000 | 11 | 0.17 ms | 167 ns | 5,997,451 ops/s |
+| 10,000 | 11 | 1.65 ms | 165 ns | 6,072,798 ops/s |
+| 40,000 | 11 | 7.11 ms | 178 ns | 5,623,137 ops/s |
+
+**C. 单次语义开销**（3 个已就绪 future，20 万次调用）：`all` 605 ns / `settle` 776 ns / `race` 481 ns / `any` 521 ns。
+
+> 解读：组合器层对「已就绪」结果是纯内存操作（百 ns 级），对「真线程」结果是「序列化 + 派发 + 跨线程执行 + 退避回收」，
+> 单任务约 165 ns 量级、等效 **~6M ops/s**——与 v1.14.0 `bench_batch` 的 map 自动批量（9.89M~10.32M）同量级，
+> 互相印证退避优化真实生效。组合器可放心在热路径中随意组合。
+
 ## 复现
 
 ```bash
 php benchmarks/bench_compare.php         # 单进程 / 多线程 / 多进程 三向对比（本机最优配置自动扫描）
+php benchmarks/bench_futures.php         # Futures 组合器层开销（all/settle/race/any/select）
 php benchmarks/bench_batch.php           # 批量合并 vs 逐条派发（自对比）
 php benchmarks/bench_message.php         # 群发消息：短/中/大三档数据 + 多进程×多线程
 PROFILE=medium php benchmarks/bench_tune.php   # 配置寻优：线程×批大小、进程×线程 网格

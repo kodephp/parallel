@@ -218,6 +218,59 @@ final class FuturesTest extends TestCase
         $this->assertSame(0, Futures::cancelAll($futures), '已完成任务不可取消');
     }
 
+    public function testSelectReturnsImmediateDoneFuture(): void
+    {
+        $done = ValueFuture::resolved('ready');
+        $pending = $this->makePendingFuture('later', 50);
+
+        // timeoutMs=0 仅检查当前是否已就绪，不应阻塞
+        $this->assertSame($done, Futures::select([$pending, $done], 0));
+    }
+
+    public function testSelectReturnsNullOnTimeout(): void
+    {
+        $never = $this->makePendingFuture('never', 1_000_000);
+
+        $start = hrtime(true);
+        $this->assertNull(Futures::select([$never], 20));
+        $elapsedMs = (hrtime(true) - $start) / 1_000_000;
+
+        $this->assertGreaterThanOrEqual(15, $elapsedMs, 'select 应在超时附近返回');
+        $this->assertLessThan(200, $elapsedMs, 'select 不应远超超时上限');
+    }
+
+    public function testRaceThrowsOnTimeout(): void
+    {
+        $never = $this->makePendingFuture('never', 1_000_000);
+
+        $this->expectException(ParallelException::class);
+        $this->expectExceptionMessage('Futures::race() 等待超时');
+
+        Futures::race([$never], 20);
+    }
+
+    public function testSettleMarksPendingRejectedOnTimeout(): void
+    {
+        $done = ValueFuture::resolved('ok');
+        $never = $this->makePendingFuture('never', 1_000_000);
+
+        $results = Futures::settle(['a' => $done, 'b' => $never], 20);
+
+        $this->assertSame(Futures::STATUS_FULFILLED, $results['a']['status']);
+        $this->assertSame(Futures::STATUS_REJECTED, $results['b']['status']);
+        $this->assertInstanceOf(ParallelException::class, $results['b']['reason']);
+    }
+
+    public function testFlattenMergesBatchesPreservingKeys(): void
+    {
+        $merged = Futures::flatten([
+            ['x' => 1, 'y' => 2],
+            ['z' => 3],
+        ]);
+
+        $this->assertSame(['x' => 1, 'y' => 2, 'z' => 3], $merged);
+    }
+
     public function testNormalizeRejectsInvalidInput(): void
     {
         $this->expectException(ParallelException::class);

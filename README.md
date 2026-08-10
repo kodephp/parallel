@@ -637,7 +637,7 @@ $results = CurlMulti::fetch($urls, concurrency: 16, timeout: 30);
 
 ---
 
-## 性能压测（v1.15.0，ZTS + ext-parallel 真线程 主线，实测可复现于 PHP 8.3.33 / 11 核）
+## 性能压测（v1.16.0，ZTS + ext-parallel 真线程 主线，实测可复现于 PHP 8.3.33 / 11 核）
 
 ### 群发消息三档数据（`bench_message.php`，10 线程，批大小 auto）
 
@@ -715,8 +715,14 @@ Concurrency\Barrier 跨进程会合    ≈ 431 回合/s  (4 方 ×50 回合)
 
 > 同口径基线脚本（可并排比较）：
 > `bench_compare.php`（单进程/多线程/多进程）｜`bench_batch.php`（批量 vs 逐条）｜`bench_message.php`（群发三档数据）｜
-> `bench_tune.php`（配置寻优网格）｜`bench_curl.php`（HTTP 扇出）｜`bench_concurrency.php`（引擎无关原语）｜
+> `bench_tune.php`（配置寻优网格）｜`bench_curl.php`（HTTP 扇出）｜`bench_futures.php`（Futures 组合器层开销）｜`bench_concurrency.php`（引擎无关原语）｜
 > `bench_pcntl.php`（裸 pcntl 地板）｜`bench_swoole.php`（Swoole 6.2 线程，需 ZTS）｜`bench_ext_parallel.php`（ext-parallel 真线程）。
+
+### Futures 组合器开销（bench_futures，ZTS 实测）
+
+`all` / `settle` / `race` / `any` 在「3 个已就绪 future」下单次 **481~776 ns**；对 N 个真线程 trivial 任务的回收
+等效 **~6M ops/s**（单任务 ~165 ns）。v1.14.0 的指数退避让组合器在任务完成瞬间即感知 `done()`，不空转睡满 500µs，
+故短任务几乎零额外延迟，可在热路径随意组合。详见 [BENCHMARK.md §Futures 组合器层开销](docs/BENCHMARK.md)。
 
 **业务怎么选**见 [USE_CASES.md](docs/USE_CASES.md)（群发通知 / 分佣结算 / HTTP 扇出 / 线程内约束）；
 调优方法与版本自对比记录见 [PERFORMANCE.md](docs/PERFORMANCE.md)；完整数据见
