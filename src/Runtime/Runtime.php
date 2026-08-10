@@ -14,12 +14,16 @@ use Kode\Parallel\Task\Task;
  * Runtime 表示一个并行执行上下文
  *
  * 传入可选的 bootstrap 文件可在任务执行前完成预加载（通常是自动加载器）。
- * Runtime 采用 FIFO 调度，任务按提交顺序执行。
+ * 默认采用单线程 FIFO 调度，任务按提交顺序执行——与 ext-parallel 的
+ * `\parallel\Runtime` 语义一致。
  *
- * 自 1.6.0 起 Runtime 构建在引擎抽象之上：
- * - 安装了 ext-parallel → 使用真线程（parallel 引擎）
- * - 未安装扩展但有 pcntl → 自动降级为多进程（process 引擎）
+ * Runtime 构建在引擎抽象之上：
+ * - 安装了 ext-parallel（ZTS）→ 使用真线程（parallel 引擎）
  * - 其余环境 → 同步执行（sync 引擎），语义保持一致
+ * - 多进程后端可由 kode/process 通过 {@see EngineFactory::register()} 接入
+ *
+ * 需要在单个 Runtime 内并行执行时，把 `$threads` 设为大于 1；
+ * 若只是想要并发上限与批量映射，优先使用 {@see \Kode\Parallel\Pool\WorkerPool}。
  *
  * 可通过构造参数或环境变量 KODE_PARALLEL_ENGINE 强制指定引擎。
  */
@@ -34,9 +38,10 @@ final class Runtime
 
     /**
      * @param string|null $bootstrap 引导文件路径
-     * @param string|null $engine 引擎名（parallel / process / sync），null 表示自动探测
+     * @param string|null $engine 引擎名（parallel / sync 或外部注册引擎），null 表示自动探测
+     * @param int $threads 线程数，默认 1（FIFO 顺序执行）；>1 时在 parallel 引擎下真正并行
      */
-    public function __construct(?string $bootstrap = null, ?string $engine = null)
+    public function __construct(?string $bootstrap = null, ?string $engine = null, int $threads = 1)
     {
         if ($bootstrap !== null && !is_file($bootstrap)) {
             throw new ParallelException(
@@ -48,7 +53,7 @@ final class Runtime
         }
 
         $this->bootstrap = $bootstrap;
-        $this->engine = EngineFactory::create($engine, $bootstrap);
+        $this->engine = EngineFactory::create($engine, $bootstrap, max(1, $threads));
     }
 
     /**

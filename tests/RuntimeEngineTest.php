@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Parallel\Tests;
 
-use Kode\Parallel\Engine\ProcessEngine;
+use Kode\Parallel\Engine\ParallelEngine;
 use Kode\Parallel\Engine\SyncEngine;
 use Kode\Parallel\Exception\ParallelException;
 use Kode\Parallel\Future\FutureInterface;
@@ -100,11 +100,11 @@ final class RuntimeEngineTest extends TestCase
 
     public function testAwaitHelperTimesOut(): void
     {
-        if (!ProcessEngine::supported()) {
-            $this->markTestSkipped('当前环境不支持 pcntl 多进程引擎');
+        if (!ParallelEngine::supported()) {
+            $this->markTestSkipped('当前环境未加载 ext-parallel（需 ZTS 构建）');
         }
 
-        $runtime = new Runtime(null, ProcessEngine::NAME);
+        $runtime = new Runtime(null, ParallelEngine::NAME);
         $future = $runtime->run(static function (array $args): int {
             sleep(10);
 

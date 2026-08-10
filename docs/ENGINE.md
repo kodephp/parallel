@@ -4,35 +4,38 @@
 
 ## 为什么需要引擎
 
-- **`ext-parallel` 不是必装项**。没有它，库也能通过 `process` 引擎（`pcntl_fork` + socket 回传）或 `sync` 引擎（同步回退）正常工作。
-- **代码与后端解耦**。业务代码只依赖 `FutureInterface` 契约，不关心底层是真线程还是子进程。
+- **`ext-parallel` 不是必装项**。没有它，库也能通过 `sync` 引擎（同步回退）正常工作；需要多进程时再接入 `kode/process`。
+- **代码与后端解耦**。业务代码只依赖 `FutureInterface` 契约，不关心底层是真线程、同步还是外部多进程后端。
 - **可移植性**。同一份代码在共享主机、容器、CI、无 ZTS 的 PHP 环境都能跑。
 
-## 三种引擎
+## 内置引擎 + 可插拔外部后端
 
 | 引擎 | 后端 | 并发模型 | 需要扩展 | 适用场景 |
 |------|------|----------|----------|----------|
-| `parallel` | `ext-parallel` 真线程 | 线程，COW 内存 | `ext-parallel` | 性能最佳，真并行 CPU 密集 |
-| `process` | `pcntl_fork` + socket pair | 子进程，独立内存 | `ext-pcntl` / `ext-posix` / `ext-sockets` | 无 ext-parallel 时的真并行 |
-| `sync` | 当前进程内直接调用 | 同步、串行 | 无 | 兼容/调试/单元测试 |
+| `parallel` | `ext-parallel` 真线程 | 线程，共享进程内存 | `ext-parallel` | **本库主线**，性能最佳，真并行 CPU 密集 |
+| `sync` | 当前进程内直接调用 | 同步、串行 | 无 | 兼容/调试/单元测试/受限环境 |
+| 外部（如 `process`） | `kode/process` 等 | 取决于后端 | 取决于后端 | 需要多进程编排时通过 `register()` 接入 |
+
+> 多进程编排**不是本包职责**。本库聚焦多线程；当你确实需要跨进程并行（如利用多机/隔离），
+> 用 `EngineFactory::register()` 把 `kode/process` 注册为外部引擎即可与本库统一调度、自动探测协作。
 
 ## 引擎优先级与探测
 
-`EngineFactory::detect()` 按 `[parallel, process, sync]` 顺序探测可用引擎：
+内置引擎按 `[parallel, sync]` 顺序探测；通过 `register()` 注册的外部引擎按其 `priority` 插入排序：
 
 ```php
 use Kode\Parallel\Engine\EngineFactory;
 
 // 当前环境下自动选择的最高优先级引擎
-$engine = EngineFactory::detect();      // e.g. "process"
-var_dump(EngineFactory::available());   // ["process", "sync"]
+$engine = EngineFactory::detect();      // e.g. "parallel"  (ZTS + ext-parallel)
+var_dump(EngineFactory::available());   // ["parallel", "sync"]
 
 // 强制指定（等价于环境变量 KODE_PARALLEL_ENGINE）
 EngineFactory::setDefault('sync');
 ```
 
-- 环境变量 `KODE_PARALLEL_ENGINE=parallel|process|sync` 可强制覆盖自动探测。
-- 单元测试中用 `skipWithoutProcessEngine()` 适配无 `ext-parallel` 的环境。
+- 环境变量 `KODE_PARALLEL_ENGINE=parallel|sync|<已注册外部引擎名>` 可强制覆盖自动探测。
+- 需要多进程时注册外部引擎（见下文「接入 kode/process」）。
 
 ## 统一契约：FutureInterface
 
@@ -50,7 +53,7 @@ interface FutureInterface {
 }
 ```
 
-内置实现：`Future`（parallel 线程）、`ProcessFuture`（进程）、`ValueFuture`（已就绪/已失败）。
+内置实现：`Future`（parallel 线程）、`ValueFuture`（已就绪/已失败）；外部引擎可返回同样实现 `FutureInterface` 的 future。
 
 ## 组合器：Futures
 
@@ -82,7 +85,9 @@ Futures::cancelAll([$f1, $f2, $f3]);
 ```php
 use Kode\Parallel\Pool\WorkerPool;
 
-$pool = new WorkerPool(concurrency: 8, engine: 'process');
+$pool = new WorkerPool(concurrency: 8);                 // 自动探测（ZTS 下即 parallel）
+// 或显式指定线程数（parallel 引擎 = 线程数；并发上限即线程数）
+$pool = new WorkerPool(concurrency: 8, engine: 'parallel');
 
 $pool->submit(fn ($x) => $x * $x, [2]);
 $pool->submit(fn ($x) => $x * $x, [3]);
@@ -97,10 +102,34 @@ print_r($pool->stats());  // 提交数 / 完成数 / 失败数 / 并发上限
 $pool->close();
 ```
 
+## 接入 kode/process（多进程后端）
+
+本库内置只有 `parallel`（真线程）与 `sync`（回退）；多进程不是本包职责。当你需要真正的
+多进程并行（更彻底的隔离、可跨机器、复用 kode/process 的集群能力），通过 `EngineFactory::register()`
+把它接入，即可参与自动探测与本库统一调度：
+
+```php
+use Kode\Parallel\Engine\EngineFactory;
+
+EngineFactory::register(
+    name: 'process',
+    factory: static fn(?string $bootstrap, int $workers): EngineInterface
+        => new \Kode\Process\Parallel\EngineAdapter($bootstrap, $workers),
+    supported: static fn(): bool => extension_loaded('pcntl'),
+    priority: EngineFactory::PRIORITY_EXTERNAL,   // 低于 parallel(100)，高于 sync(0)
+);
+
+// 之后即可像内置引擎一样使用，kode/process 的多进程后端自动进入探测候选
+$runtime = new Runtime(null, 'process');
+```
+
+注册后 `EngineFactory::available()` / `detect()` / `WorkerPool(engine: 'process')` 都会把 `process`
+视为一等公民；`unregister('process')` 可随时移除。
+
 ## 引擎无关同步原语（Concurrency）
 
 v1.7.0 新增 `Kode\Parallel\Concurrency\*` 系列，**无需 ext-parallel / ZTS**，在 stock PHP CLI
-（process / sync 引擎）下即可使用，对标 Swoole 6 的 `Thread\*` 原语，且能在非 ZTS、无 ext-parallel
+（sync 引擎）下即可使用，对标 Swoole 6 的 `Thread\*` 原语，且能在非 ZTS、无 ext-parallel
 的普通 PHP 上运行（Swoole 多线程必须 ZTS 构建）。
 
 ```php

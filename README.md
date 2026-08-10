@@ -4,7 +4,7 @@
 
 [![PHP Version](https://img.shields.io/badge/PHP-%3E%3D8.3-blue)](https://php.net)
 [![License](https://img.shields.io/badge/License-Apache--2.0-green)](LICENSE)
-[![Package Version](https://img.shields.io/badge/Version-1.11.0-orange)](composer.json)
+[![Package Version](https://img.shields.io/badge/Version-1.12.0-orange)](composer.json)
 [![Engines](https://img.shields.io/badge/Engines-parallel%20%7C%20process%20%7C%20sync-purple)](docs/ENGINE.md)
 
 ## 目录
@@ -29,18 +29,18 @@
 
 `kode/parallel` 是适用于 PHP 8.3+ 的高性能并行并发库，提供面向对象的高层 API、完整中文文档，以及 PHP 8.5 新特性的前向兼容实现。
 
-自 **v1.6.0** 起引入引擎抽象层；**v1.7.0** 进一步提供引擎无关的同步原语（`Lock`/`Atomic`/`Barrier`/`Channel`，无需 ZTS/ext-parallel）与 `Future` 组合子。同一套代码在装了 `ext-parallel` 的机器上跑真线程，在只有 `pcntl` 的机器上自动降级为多进程，在 Windows 等受限环境下退化为同步执行——**扩展从硬依赖变为可选加速项**。
+自 **v1.6.0** 起引入引擎抽象层；**v1.7.0** 进一步提供引擎无关的同步原语（`Lock`/`Atomic`/`Barrier`/`Channel`，无需 ZTS/ext-parallel）与 `Future` 组合子。同一套代码在装了 `ext-parallel` 的机器上跑真线程（本库主线），在受限环境下退化为同步执行；**多进程编排不是本包职责**——需要时通过 `EngineFactory::register()` 接入 `kode/process` 等后端，与本库统一调度/自动探测无缝协作。
 
-### 架构模型：多引擎并行
+### 架构模型：多线程主线 + 可插拔后端
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                      本地并行 (多引擎自动降级)                     │
+│                  本地并行 (多线程主线 + 可插拔后端)                  │
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │  Runtime (并行执行上下文)                                  │   │
-│  │    ├─ parallel 引擎：ext-parallel 真线程（ZTS PHP）       │   │
-│  │    ├─ process  引擎：pcntl fork 多进程 + socket 回传      │   │
-│  │    └─ sync     引擎：当前进程内顺序执行（回退/调试）       │   │
+│  │    ├─ parallel 引擎：ext-parallel 真线程（ZTS PHP）【主线】│   │
+│  │    ├─ sync     引擎：当前进程内顺序执行（回退/调试）        │   │
+│  │    └─ 外部引擎：kode/process 等通过 register() 接入       │   │
 │  └─────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -49,8 +49,8 @@
 
 | 层级 | 能力 | 组件 |
 |------|------|------|
-| **执行引擎** | 多引擎自动降级 | EngineFactory, ParallelEngine, ProcessEngine, SyncEngine |
-| **本地并行** | 多线程 / 多进程执行 | Runtime, Task, Future, Futures, WorkerPool, Channel |
+| **执行引擎** | 真线程主线 + 同步回退 + 可插拔外部后端 | EngineFactory, ParallelEngine, SyncEngine |
+| **本地并行** | 多线程执行 | Runtime, Task, Future, Futures, WorkerPool, Channel |
 | **引擎无关同步原语** | 互斥/原子计数/屏障/通道（**无需 ext-parallel / ZTS**，对标 Swoole Thread） | Concurrency\Lock, Atomic, AtomicLong, Barrier, Channel, Semaphore |
 | **协程支持** | Fiber 协程 | Fiber, FiberManager |
 | **HTTP 并行** | 并行请求 | CurlMulti |
@@ -61,7 +61,7 @@
 
 | 组件 | 说明 |
 |------|------|
-| **Engine** | 引擎抽象：`parallel`（真线程）/ `process`（pcntl 多进程）/ `sync`（同步回退），自动探测 |
+| **Engine** | 引擎抽象：`parallel`（ext-parallel 真线程，主线）/ `sync`（同步回退）/ 可插拔外部后端（如 `kode/process`），自动探测 |
 | **Runtime** | 并行执行上下文，屏蔽底层引擎差异 |
 | **Task** | 并行任务闭包封装，含 ext-parallel 限制校验（可关闭） |
 | **Future** | 异步任务返回值访问，统一 `FutureInterface` 契约，支持 `then` / `map` / `catch` 组合子 |
@@ -221,20 +221,26 @@ v1.6.0 起所有并行入口都构建在引擎抽象之上，按优先级自动�
 
 | 引擎 | 前提 | 并行方式 | 适用场景 |
 |------|------|---------|---------|
-| `parallel` | ext-parallel（ZTS PHP） | 真线程，共享进程 | 生产环境最佳性能 |
-| `process` | ext-pcntl（类 UNIX） | `fork` 多进程 + socket 回传 | 无扩展时的默认并行方案 |
+| `parallel` | ext-parallel（ZTS PHP） | 真线程，共享进程内存 | 生产环境最佳性能（**本库主线**） |
 | `sync` | 无 | 当前进程内顺序执行 | Windows / 受限环境 / 调试 |
+| 外部引擎 | 由 `register()` 接入 | 取决于后端（如 `kode/process` 多进程） | 需要多进程编排时 |
 
 ```php
 use Kode\Parallel\Engine\EngineFactory;
 use Kode\Parallel\Runtime\Runtime;
 
-EngineFactory::available();            // ['parallel' => false, 'process' => true, 'sync' => true]
-EngineFactory::detect();               // 'process'
+EngineFactory::available();            // ['parallel' => true, 'sync' => true]  (ZTS + ext-parallel)
+EngineFactory::detect();               // 'parallel'
 
-$runtime = new Runtime();              // 自动选择
-$runtime = new Runtime(null, 'sync');  // 显式指定
-EngineFactory::setDefault('process');  // 全局强制
+$runtime = new Runtime();              // 自动选择（真线程）
+$runtime = new Runtime(null, 'sync');  // 显式指定同步回退
+
+// 需要多进程时，把 kode/process 接入统一调度（详见 docs/ENGINE.md）
+EngineFactory::register(
+    name: 'process',
+    factory: static fn(?string $bootstrap, int $workers) => new MyProcessEngine($bootstrap, $workers),
+    supported: static fn(): bool => extension_loaded('pcntl'),
+);
 ```
 
 也可用环境变量强制指定，便于 CI 分别验证：
@@ -272,8 +278,9 @@ $stats   = $pool->stats();                     // engine / submitted / completed
 $pool->close();
 ```
 
-> **process 引擎注意事项**：任务返回值必须可序列化；子进程内的内存修改不会回传父进程；
-> 需要共享状态时请使用 Channel 或外部存储。
+> **多线程（parallel 引擎）无需序列化返回值**：任务闭包与上下文共享同一进程内存，闭包捕获的
+> 对象/资源即在同一进程内，取回结果不经过 IPC 序列化；这与多进程模型（kode/process）有本质区别——
+> 后者需跨进程序列化。需要跨进程共享状态时仍可使用 `Concurrency\*` 原语或外部存储。
 
 ### 引擎无关同步原语（Concurrency）
 
@@ -559,33 +566,41 @@ $runtime->run($consumer);
 
 ---
 
-## 性能压测（v1.11.0，ZTS + ext-parallel 真线程 主线，普通 PHP 多进程回退，实测可复现）
+## 性能压测（v1.12.0，ZTS + ext-parallel 真线程 主线，实测可复现于 PHP 8.3.33 / 11 核）
+
+### 单进程 vs 多线程 vs 多进程（同一份 CPU 任务，N=2000 独立单元，越高的 ops/s 越好）
+
+| 工作负载 | 单进程(1线程) | 多线程 parallel(最优) | 多进程 fork池(最优) | 多线程加速比 |
+|---------|-------------|--------------------|--------------------|------------|
+| trivial（仅 return） | **19.8M/s** | 432k/s（x2） | 1.6M/s（x1） | 0.02×（反而更慢） |
+| light（2k 次循环） | 51k/s | 162k/s（x8） | 194k/s（x8） | 3.2× |
+| medium（20万次 sqrt/sin） | 104/s | 508/s（x8） | 641/s（x8） | 4.9× |
+
+> **关键结论（实测）**：
+> - **任务派发开销**：每单元独立 fork 的多进程 ≈ **3.4k ops/s**，而多线程 `submit+get` ≈ **233k ops/s** →
+>   多线程快约 **68×（可达百倍）**。差距来自 fork + 序列化 + IPC，而真线程共享内存、零重建。
+> - **稳态并发（worker 池）**：轻/中负载下多线程与多进程都随核心数**近似线性加速**（8 核 ~5–6×），二者量级相当
+>   （多线程约为多进程的 0.8×）。多线程胜在共享内存、无数据拷贝、编程模型更简单。
+> - **琐碎任务**：单进程顺序执行反而最快（零调度开销）——并行仅在「处理量足以摊销调度成本」时才有收益。
+> - **最优配置**：多线程线程数 ≈ CPU 逻辑核心数（`Runtime(null,'parallel', cores)`）；超过核心数不再提速。
+
+### 引擎无关同步原语（与引擎无关，多引擎下一致）
 
 ```
-========================================
-    Kode/Parallel 性能压测报告 (v1.11.0)
-    PHP 8.3.33 | ZTS: YES | engine: parallel
-========================================
-
-parallel 引擎 submit+get ×200   ≈ 18万–30万 ops/s  (真线程，免 fork/IPC 重建)
-Concurrency\Channel send+recv    ≈ 13–18M ops/s (进程内，纯内存)
-Concurrency\Lock withLock 自增   ≈ 96k ops/s   (跨进程文件锁)
-Concurrency\Atomic 进程内 inc     ≈ 13–17M ops/s (v1.9.0 内存快路径)
-Concurrency\Atomic 跨进程 inc     ≈ 17k ops/s   (6 进程 ×5k，零丢失)
-Concurrency\Semaphore 进程内      ≈ 7.3M ops/s  (v1.10.0 新增，acquire+release)
-Concurrency\Barrier 跨进程会合    ≈ 350 回合/s  (4 方 ×50 回合)
-
---- 回退：普通 PHP（ZTS: NO），engine: process ---
-process 引擎 submit+get ×200     ≈ 2.2k ops/s  (fork 模型固有开销，约为真线程的 1/100)
+Concurrency\Channel send+recv    ≈ 14M ops/s   (进程内，纯内存)
+Concurrency\Lock withLock 自增   ≈ 110k ops/s  (跨进程文件锁)
+Concurrency\Atomic 进程内 inc     ≈ 13.6M ops/s (内存快路径)
+Concurrency\Atomic 跨进程 inc     ≈ 16.7k ops/s (6 进程 ×5k，零丢失)
+Concurrency\Semaphore 进程内      ≈ 7.1M ops/s  (acquire+release)
+Concurrency\Barrier 跨进程会合    ≈ 431 回合/s  (4 方 ×50 回合)
 ```
 
-> 真线程（parallel 引擎）任务派发比多进程（process 引擎）快约 **2 个数量级**；引擎无关原语在多引擎下表现一致。
 > 四角同类对比基线（同口径，可并排比较）：
-> `php benchmarks/bench_concurrency.php`（kode，自动探测引擎）｜`bench_pcntl.php`（裸 pcntl 地板）｜
-> `bench_swoole.php`（Swoole 6.2 线程，需 ZTS）｜`bench_ext_parallel.php`（ext-parallel 真线程，需 ZTS）。
+> `php benchmarks/bench_compare.php`（单进程/多线程/多进程对比）｜`bench_concurrency.php`（引擎无关原语）｜
+> `bench_pcntl.php`（裸 pcntl 地板）｜`bench_swoole.php`（Swoole 6.2 线程，需 ZTS）｜`bench_ext_parallel.php`（ext-parallel 真线程）。
 
 调优方法见 [docs/PERFORMANCE.md](docs/PERFORMANCE.md)；完整数据与 Swoole 6.2 对标见
-[BENCHMARK.md](docs/BENCHMARK.md) 与 [SWOOLE_COMPARISON.md](docs/SWOOLE_COMPARISON.md)。
+[BENCHMARK.md](docs/BENCHMARK.md)、[PROCESS_VS_THREAD.md](docs/PROCESS_VS_THREAD.md) 与 [SWOOLE_COMPARISON.md](docs/SWOOLE_COMPARISON.md)。
 
 ---
 

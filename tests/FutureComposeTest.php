@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Kode\Parallel\Tests;
 
 use Kode\Parallel\Engine\EngineFactory;
+use Kode\Parallel\Engine\ParallelEngine;
 use Kode\Parallel\Future\Futures;
 use Kode\Parallel\Future\ValueFuture;
 use Kode\Parallel\Runtime\Runtime;
@@ -95,9 +96,13 @@ final class FutureComposeTest extends TestCase
     /**
      * 非阻塞选择：超时仍未就绪返回 null；超时足够则能选中正在执行的任务。
      */
-    public function testSelectTimingWithProcessFuture(): void
+    public function testSelectTimingWithAsyncFuture(): void
     {
-        $rt = new Runtime(null, 'process');
+        if (!ParallelEngine::supported()) {
+            $this->markTestSkipped('需要异步引擎（ext-parallel）才能观察未就绪状态');
+        }
+
+        $rt = new Runtime(null, ParallelEngine::NAME);
         $slow = $rt->run(static function () {
             usleep(200_000);
             return 'done';

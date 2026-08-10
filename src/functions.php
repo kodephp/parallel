@@ -15,6 +15,7 @@ use Kode\Parallel\Future\FutureInterface;
 use Kode\Parallel\Future\Futures;
 use Kode\Parallel\Pool\WorkerPool;
 use Kode\Parallel\Runtime\Runtime;
+use Kode\Parallel\Runtime\SharedRuntime;
 use Kode\Parallel\Task\Task;
 use Kode\Parallel\Util\Sys;
 
@@ -39,13 +40,17 @@ function run(callable|\Closure $task, array $args = [], ?string $bootstrap = nul
  */
 function shared_runtime(?string $bootstrap = null): Runtime
 {
-    static $runtime = null;
+    return SharedRuntime::get($bootstrap);
+}
 
-    if ($runtime === null || $runtime->isClosed()) {
-        $runtime = new Runtime($bootstrap);
-    }
-
-    return $runtime;
+/**
+ * 关闭进程级共享 Runtime，释放线程资源
+ *
+ * 共享 Runtime 尚未创建时为空操作。
+ */
+function close_shared_runtime(): void
+{
+    SharedRuntime::close();
 }
 
 /**

@@ -1,22 +1,23 @@
 {
     "name": "kode/parallel",
-    "description": "适用于 PHP 8.3+ 的高性能并行并发库：多引擎自动降级（ext-parallel 真线程 / pcntl 多进程 / 同步回退），提供 Runtime、Task、Future、Concurrency 同步原语（Lock/Atomic/Semaphore/Barrier/Channel）、Fiber、WorkerPool 等完整能力",
+    "description": "适用于 PHP 8.3+ 的高性能多线程并行并发库：基于 ext-parallel 真线程（ZTS）的主引擎 + 同步回退引擎，可通过 EngineFactory::register() 接入 kode/process 等多进程后端；提供 Runtime、Task、Future、Concurrency 同步原语（Lock/Atomic/Semaphore/Barrier/Channel）、Fiber、WorkerPool 等完整能力",
     "keywords": [
         "parallel",
         "concurrency",
         "async",
         "multithreading",
-        "multiprocess",
         "fiber",
         "coroutine",
         "kode",
         "高性能",
         "并行",
         "并发",
-        "协程"
+        "协程",
+        "真线程",
+        "ext-parallel"
     ],
     "type": "library",
-    "version": "1.11.0",
+    "version": "1.12.0",
     "license": "Apache-2.0",
     "authors": [
         {
@@ -35,9 +36,8 @@
         "phpunit/phpunit": "^10.0"
     },
     "suggest": {
-        "ext-parallel": "启用 parallel 引擎以获得真正的多线程并行（需要 ZTS 构建的 PHP）",
-        "ext-pcntl": "启用 process 引擎，在无 ext-parallel 的类 UNIX 环境下提供多进程并行",
-        "ext-posix": "配合 process 引擎实现子进程精确取消"
+        "ext-parallel": "启用 parallel 引擎以获得真正的多线程并行（需要 ZTS 构建的 PHP），本库主引擎",
+        "kode/process": "需要多进程编排时，通过 EngineFactory::register() 接入，与本库统一调度/自动探测无缝协作"
     },
     "autoload": {
         "psr-4": {

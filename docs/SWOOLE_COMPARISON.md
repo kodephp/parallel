@@ -2,7 +2,7 @@
 
 > 对标版本：Swoole **6.2.2**（2026-07-08，6.x 系列最新稳定版）。
 > 测试环境版本：Swoole 6.0 起引入原生线程（`Swoole\Thread` 系列），6.2.x 进一步加入 io_uring HTTP、协程 FTP/SSH、PHP 8.5 支持等。
-> kode 侧版本：`v1.11.0` ｜ kode 栈：`kode/context 3.1.0` / `kode/facade 3.2.0` / `kode/fibers 4.5.0`（均为当前各包最新版）。
+> kode 侧版本：`v1.12.0` ｜ kode 栈：`kode/context 3.1.0` / `kode/facade 3.2.0` / `kode/fibers 4.5.0`（均为当前各包最新版）。
 > 同类对比基准（四角基线，同口径）：`bench_concurrency.php`（kode）｜`bench_swoole.php`（Swoole 6.2 线程，需 ZTS）｜`bench_ext_parallel.php`（ext-parallel 真线程，需 ZTS）｜`bench_pcntl.php`（裸 pcntl 地板，普通 PHP）。
 
 ## 核心结论（先讲重点）
@@ -65,21 +65,23 @@ Swoole 6 则始终是「同一进程内的多线程 + 协程」，没有这种�
 
 ## 性能对比（实测 vs 官方能力）
 
-### kode/parallel 实测（本仓库 `benchmarks/bench_concurrency.php`，stock PHP 8.3.31，**非 ZTS**，v1.9.0）
+### kode/parallel 实测（本仓库 `benchmarks/bench_concurrency.php` / `bench_compare.php`，ZTS + ext-parallel 真线程主线，v1.12.0）
 
 | 测试项 | 数值 | 说明 |
 |--------|------|------|
-| 进程引擎任务扇出（submit+get ×200） | ~69 ms（≈2.9k ops/s） | fork 模型固有开销 |
-| 并行映射（parallel_map ×100） | ~34 ms | CPU 友好型任务 |
-| `Concurrency\Channel`（send+recv ×200k） | ~24 ms（≈16.7M ops/s） | 进程内队列，极快 |
-| `Concurrency\Lock`（withLock ×20k） | ~183 ms（≈109k ops/s） | 每次加锁开/关独立 fd，换取 macOS 下的可靠排他性 |
-| `Concurrency\Atomic`（**进程内** inc ×5M） | ~301 ms（**≈16.6M ops/s**） | v1.9.0 纯内存快路径，未命名计数器 |
-| `Concurrency\Atomic`（跨进程 inc ×30k） | ~1.52 s（≈19.7k ops/s） | 文件锁兜底，**正确性优先**，零丢失 |
-| `Concurrency\Barrier`（跨进程 4 方 ×50 回合） | ~134 ms | 代际屏障，跨进程同步 |
+| 多线程任务扇出（submit+get ×1000，空任务） | ~4.3 ms（**≈233k ops/s**） | 真线程，共享内存、零 fork/IPC 重建 |
+| 每任务独立 fork 多进程（对照地板） | ≈ 3.4k ops/s | fork 模型固有开销 |
+| 并行映射（parallel_map ×100） | ≈ 50 ms | CPU 友好型任务 |
+| `Concurrency\Channel`（send+recv ×200k） | ~14 ms（≈14M ops/s） | 进程内队列，极快 |
+| `Concurrency\Lock`（withLock ×20k） | ~182 ms（≈110k ops/s） | 每次加锁开/关独立 fd，换取 macOS 下的可靠排他性 |
+| `Concurrency\Atomic`（**进程内** inc ×5M） | ~367 ms（**≈13.6M ops/s**） | v1.9.0 纯内存快路径，未命名计数器 |
+| `Concurrency\Atomic`（跨进程 inc ×30k） | ~1.8 s（≈16.7k ops/s） | 文件锁兜底，**正确性优先**，零丢失 |
+| `Concurrency\Barrier`（跨进程 4 方 ×50 回合） | ~116 ms | 代际屏障，跨进程同步 |
 
 > 关键：跨进程 `Atomic` 在 6 进程 × 各 5000 次争用压测下**零丢失更新**（详见修复记录）。
-> v1.9.0 新增未命名 `Atomic` 纯内存快路径（≈16.6M ops/s），把进程内计数场景推到与 Channel 同量级。
-> 整体吞吐低于 Swoole 线程共享内存，但**不依赖 ZTS**，且可跨进程/跨机器。
+> v1.9.0 新增未命名 `Atomic` 纯内存快路径（≈13.6M ops/s），把进程内计数场景推到与 Channel 同量级。
+> 多线程任务派发比「每任务独立 fork 的多进程」快约 **1~2 个数量级**（详见 `docs/PROCESS_VS_THREAD.md`）。
+> 整体吞吐低于 Swoole 线程共享内存，但**不依赖 ZTS、可跨进程/跨机器**，且多进程编排可经 `register()` 接入 kode/process。
 
 ### Swoole 6 线程原语（官方定位）
 

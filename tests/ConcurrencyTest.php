@@ -11,11 +11,14 @@ use Kode\Parallel\Concurrency\Channel;
 use Kode\Parallel\Concurrency\Lock;
 use Kode\Parallel\Concurrency\Semaphore;
 use Kode\Parallel\Engine\EngineFactory;
-use Kode\Parallel\Runtime\Runtime;
+use Kode\Parallel\Tests\Support\ForkRunner;
 use PHPUnit\Framework\TestCase;
 
 /**
  * 引擎无关同步原语测试（无需 ext-parallel / ZTS，对标 Swoole 6 Thread 原语）
+ *
+ * 跨进程用例直接 fork 验证：这些原语基于文件锁，其跨进程能力是原语自身属性，
+ * 与执行引擎无关。
  */
 final class ConcurrencyTest extends TestCase
 {
@@ -23,6 +26,13 @@ final class ConcurrencyTest extends TestCase
     {
         EngineFactory::setDefault(null);
         parent::tearDown();
+    }
+
+    private function skipWithoutFork(): void
+    {
+        if (!ForkRunner::supported()) {
+            $this->markTestSkipped('当前环境不支持 pcntl fork，跳过跨进程用例');
+        }
     }
 
     public function testLockWithLockReturnsCallbackValue(): void
@@ -79,22 +89,14 @@ final class ConcurrencyTest extends TestCase
     {
         $count = 6;
 
+        $this->skipWithoutFork();
+
         for ($round = 0; $round < 8; $round++) {
             $name = 'ut_atomic_' . uniqid('', true);
-            $rt = new Runtime(null, 'process');
-            $futures = [];
-            for ($i = 0; $i < $count; $i++) {
-                $futures[] = $rt->run(static function (array $args) {
-                    $a = Atomic::named(0, $args['name']);
-                    return $a->inc();
-                }, ['name' => $name]);
-            }
 
-            $results = [];
-            foreach ($futures as $f) {
-                $results[] = $f->get();
-            }
-            $rt->close();
+            $results = ForkRunner::run($count, static function () use ($name) {
+                return Atomic::named(0, $name)->inc();
+            });
 
             sort($results);
             $this->assertSame(
@@ -120,25 +122,19 @@ final class ConcurrencyTest extends TestCase
     {
         $count = 4;
 
+        $this->skipWithoutFork();
+
         for ($round = 0; $round < 8; $round++) {
             $name = 'ut_barrier_' . uniqid('', true);
-            $rt = new Runtime(null, 'process');
-            $futures = [];
-            for ($i = 0; $i < $count; $i++) {
-                $futures[] = $rt->run(static function (array $args) {
-                    $barrier = Barrier::named($args['count'], $args['name']);
-                    $barrier->wait();
-                    return getmypid();
-                }, ['count' => $count, 'name' => $name]);
-            }
 
-            $pids = [];
-            foreach ($futures as $f) {
-                $pids[] = $f->get();
-            }
-            $rt->close();
+            $pids = ForkRunner::run($count, static function () use ($count, $name) {
+                Barrier::named($count, $name)->wait();
+
+                return getmypid();
+            });
 
             $this->assertCount($count, $pids, "第 {$round} 轮：全部参与者均应越过屏障");
+            $this->assertCount($count, array_unique($pids), "第 {$round} 轮：每个参与者应是独立进程");
         }
     }
 
@@ -185,26 +181,20 @@ final class ConcurrencyTest extends TestCase
     {
         $count = 6;
 
+        $this->skipWithoutFork();
+
         for ($round = 0; $round < 8; $round++) {
             $name = 'ut_sem_' . uniqid('', true);
-            $rt = new Runtime(null, 'process');
-            $futs = [];
-            for ($i = 0; $i < $count; $i++) {
-                $futs[] = $rt->run(static function (array $args) {
-                    $sem = Semaphore::named($args['permits'], $args['name']);
-                    // 每个进程先占用 1 个许可，再释放，确保额度守恒
-                    $sem->acquire(1);
-                    $availDuringHold = $sem->getAvailable();
-                    $sem->release(1);
-                    return $availDuringHold;
-                }, ['permits' => 1, 'name' => $name]);
-            }
 
-            $during = [];
-            foreach ($futs as $f) {
-                $during[] = $f->get();
-            }
-            $rt->close();
+            $during = ForkRunner::run($count, static function () use ($name) {
+                $sem = Semaphore::named(1, $name);
+                // 每个进程先占用 1 个许可，再释放，确保额度守恒
+                $sem->acquire(1);
+                $availDuringHold = $sem->getAvailable();
+                $sem->release(1);
+
+                return $availDuringHold;
+            });
 
             // 命名信号量初始 1 个许可：任一进程持有期间，其余进程看到的可用数应为 0
             foreach ($during as $v) {

@@ -7,16 +7,16 @@
 
 ## 1. 先选对引擎（决定性能天花板）
 
-`EngineFactory` 探测优先级：**`parallel`（真线程，需 ZTS + ext-parallel） ＞ `process`（多进程，需 pcntl） ＞ `sync`（同步回退）**。
+`EngineFactory` 探测优先级：**`parallel`（真线程，需 ZTS + ext-parallel） ＞ `sync`（同步回退） ＞〔通过 `register()` 接入的外部引擎，如 kode/process〕**。
 
 | 你的环境 | 默认引擎 | 说明 |
 |----------|----------|------|
-| 装了 `ext-parallel`（ZTS PHP） | `parallel` | 真线程，与 Swoole 线程同档 |
-| 普通 Linux/macOS（仅 pcntl） | `process` | 本仓库默认路径 |
-| Windows / 受限沙箱 | `sync` | 单进程顺序执行，API 一致 |
+| 装了 `ext-parallel`（ZTS PHP） | `parallel` | **本库主线**，真线程，与 Swoole 线程同档 |
+| 普通 PHP（无 ext-parallel） | `sync` | 顺序执行回退，API 一致 |
+| 需要多进程编排 | `kode/process`（经 `register()` 接入） | 隔离/跨机/集群，与本库统一调度协作 |
 
-**调优点**：生产环境若追求极致同进程吞吐，优先部署 **ZTS + ext-parallel**；否则 `process` 引擎已足够，
-且 `Lock`/`Atomic`/`Barrier` 仍可跨进程共享状态。可用 `EngineFactory::detect()` 确认当前引擎。
+**调优点**：生产环境若追求极致同进程吞吐，优先部署 **ZTS + ext-parallel**；否则 `sync` 回退仍保证 API 一致，
+跨进程共享状态用 `Lock`/`Atomic`/`Barrier`。需要真正的多进程时再接入 `kode/process`。可用 `EngineFactory::detect()` 确认当前引擎。
 
 ---
 
@@ -32,7 +32,7 @@ $pool = new WorkerPool(concurrency: (int) shell_exec('nproc') ?: 4);
 
 - 计算密集型：并发 = 核数即可，过多反而因上下文切换掉速；
 - IO 密集型（网络/磁盘）：可适当高于核数（如 2×），让等待时间被其他任务填充；
-- `process` 引擎每个 worker 是一个独立进程（fork），并发越高内存占用越大，注意上限。
+- `parallel` 引擎每个 worker 是一条真线程（共享进程内存），并发越高内存占用越可控，但线程数超过核数不再提速。
 
 ---
 
@@ -47,7 +47,7 @@ $pool = new WorkerPool(concurrency: (int) shell_exec('nproc') ?: 4);
 | 跨进程互斥临界区 | `Lock::named('name')->withLock(fn)` | ≈ 109k ops/s |
 | 并发度限制（连接池/限流） | `Semaphore::named($n, 'name')` | 进程内 ≈ 7.7M ops/s |
 | 进程内消息传递 | `new Channel(0)`（无界） | ≈ 16.7M ops/s |
-| 跨进程多进程会合 | `Barrier::named($parties, 'name')` | ≈ 372 回合/s |
+| 跨进程多进程会合 | `Barrier::named($parties, 'name')` | ≈ 431 回合/s |
 
 **原则**：
 - **只在需要跨进程共享时才付文件锁的代价**。进程内计数器、累加器一律用**未命名 `Atomic`**（内存快路径），
@@ -86,28 +86,32 @@ if ($at->tryAdd(1)) { /* 成功 */ } else { /* 退避重试 */ }
 
 ---
 
-## 4. 减少序列化开销（process / parallel 引擎）
+## 4. 减少序列化开销（parallel / sync 引擎）
 
-`process` 引擎通过 `pcntl_fork` + 管道在父子进程间传递**参数与返回值**，会触发 `serialize/unserialize`：
+`parallel` 引擎通过 ext-parallel 在**线程间**传递**参数与返回值**，任务闭包与参数会被序列化（线程内共享同一进程内存，
+但 ext-parallel 的调度仍基于序列化通道）：
 
-- **传递大数组/对象代价高**：把入参压到最小（传 id 而非整条记录，子进程内再查）；
+- **传递大数组/对象代价高**：把入参压到最小（传 id 而非整条记录，任务内再查）；
 - **返回值同理**：返回摘要（计数、状态、少量字段）而非完整对象树；
-- 需要共享大量只读数据 → 用 `kode/context` 的进程级上下文，或在 fork 前准备好，避免每个任务重复传递；
-- `sync` 引擎无序列化（同进程直接调用），调试期用它最快定位逻辑问题。
+- 需要共享大量只读数据 → 用 `kode/context` 的进程级上下文，或在任务外准备好，避免每个任务重复传递；
+- `sync` 引擎无序列化（同进程直接调用），调试期用它最快定位逻辑问题；
+- 多线程的派发开销（≈233k ops/s 空任务 submit+get）远低于「每任务独立 fork 的多进程」（≈3.4k ops/s），
+  高频细粒度并行优先选 `parallel` 引擎。详见 `docs/PROCESS_VS_THREAD.md`。
 
 ---
 
 ## 5. Channel vs 返回值：选对通信方式
 
 - **一对多结果收集**：`Futures::all([...])` 或 `Runtime::run()->get()` 聚合，最省心；
-- **生产者/消费者流**：用 `Concurrency\Channel` 在**同一进程内**做流式传递（≈16.7M ops/s）；
-- **跨进程流式**：`process` 引擎下 Channel 是进程内结构，跨进程请用 `Atomic`/`Barrier` 协调 + 返回值汇总。
+- **生产者/消费者流**：用 `Concurrency\Channel` 在**同一进程内**做流式传递（≈14M ops/s）；
+- **跨进程流式**：`Channel` 是进程内结构，跨进程请用 `Atomic`/`Barrier` 协调 + 返回值汇总（或接入 kode/process）。
 
 ---
 
 ## 6. 任务粒度：粗一点更快
 
-`process` 引擎的「fork + 取结果」单次成本约 0.3~0.4 ms（见 BENCHMARK：submit+get ≈ 2.9k ops/s）。
+`parallel` 引擎「派发 + 取回」单次固定成本约 4~5 µs（见 BENCHMARK：空任务 submit+get ≈ 233k ops/s）；
+「每任务独立 fork 的多进程」则约 0.3~0.4 ms（≈3.4k ops/s），高一个数量级。
 因此：
 
 - ❌ 不要把「循环里每个元素」当成一个任务 → 调度开销吃掉收益；

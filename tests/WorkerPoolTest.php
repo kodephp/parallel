@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Parallel\Tests;
 
-use Kode\Parallel\Engine\ProcessEngine;
+use Kode\Parallel\Engine\ParallelEngine;
 use Kode\Parallel\Engine\SyncEngine;
 use Kode\Parallel\Exception\ParallelException;
 use Kode\Parallel\Future\Futures;
@@ -123,13 +123,11 @@ final class WorkerPoolTest extends TestCase
         $pool->close();
     }
 
-    public function testProcessPoolRespectsConcurrencyLimit(): void
+    public function testThreadPoolRespectsConcurrencyLimit(): void
     {
-        if (!ProcessEngine::supported()) {
-            $this->markTestSkipped('当前环境不支持 pcntl 多进程引擎');
-        }
+        $this->skipWithoutParallelEngine();
 
-        $pool = new WorkerPool(2, ProcessEngine::NAME);
+        $pool = new WorkerPool(2, ParallelEngine::NAME);
         $start = hrtime(true);
 
         $results = $pool->map(range(1, 4), static function (int $n): int {
@@ -147,23 +145,60 @@ final class WorkerPoolTest extends TestCase
         $pool->close();
     }
 
-    public function testProcessPoolIsolatesTaskMemory(): void
+    /**
+     * 回归防护：单个 \parallel\Runtime 是 FIFO 串行的，
+     * 工作池必须按并发上限开出多个线程，否则并发上限形同虚设。
+     */
+    public function testThreadPoolActuallyRunsInParallel(): void
     {
-        if (!ProcessEngine::supported()) {
-            $this->markTestSkipped('当前环境不支持 pcntl 多进程引擎');
-        }
+        $this->skipWithoutParallelEngine();
 
-        $pool = new WorkerPool(3, ProcessEngine::NAME);
-        $parentPid = getmypid();
+        $pool = new WorkerPool(4, ParallelEngine::NAME);
+        $start = hrtime(true);
 
-        $pids = $pool->map(range(1, 3), static fn(int $n): int => getmypid());
+        $results = $pool->map(range(1, 4), static function (int $n): int {
+            usleep(200_000);
 
-        foreach ($pids as $pid) {
-            $this->assertNotSame($parentPid, $pid);
-        }
+            return $n * 2;
+        });
 
-        $this->assertCount(3, array_unique($pids), '每个任务都应有独立子进程');
+        $elapsedMs = (hrtime(true) - $start) / 1_000_000;
+
+        $this->assertSame([2, 4, 6, 8], array_values($results));
+        $this->assertLessThan(
+            500,
+            $elapsedMs,
+            '4 个 200ms 任务在 4 线程下应接近 200ms，而非串行的 800ms'
+        );
 
         $pool->close();
+    }
+
+    public function testThreadPoolIsolatesTaskState(): void
+    {
+        $this->skipWithoutParallelEngine();
+
+        $pool = new WorkerPool(3, ParallelEngine::NAME);
+
+        // ext-parallel 每个线程是独立解释器，静态状态不共享
+        $counters = $pool->map(range(1, 3), static function (int $n): int {
+            static $calls = 0;
+            $calls++;
+
+            return $calls;
+        });
+
+        foreach ($counters as $value) {
+            $this->assertSame(1, $value, '每个线程都应有独立的静态状态');
+        }
+
+        $pool->close();
+    }
+
+    private function skipWithoutParallelEngine(): void
+    {
+        if (!ParallelEngine::supported()) {
+            $this->markTestSkipped('当前环境未加载 ext-parallel（需 ZTS 构建）');
+        }
     }
 }

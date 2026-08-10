@@ -18,12 +18,11 @@ final class Future implements FutureInterface
 
     private \parallel\Future $future;
     private bool $cancelled = false;
-    private readonly string $id;
+    private ?string $id = null;
 
     public function __construct(\parallel\Future $future)
     {
         $this->future = $future;
-        $this->id = spl_object_id($future) . '_' . bin2hex(random_bytes(8));
     }
 
     /**
@@ -42,6 +41,10 @@ final class Future implements FutureInterface
      *
      * 如果任务未完成，此方法会阻塞等待直到任务完成。
      *
+     * 线程内抛出的业务异常会被统一包装为 {@see ParallelException}，
+     * 与 sync 等其他引擎的语义保持一致；原异常可通过 `getPrevious()`
+     * 获取，原异常类名见 `getContext()['exception']`。
+     *
      * @return mixed 任务返回值
      * @throws ParallelException 如果任务被取消或执行失败
      */
@@ -57,9 +60,18 @@ final class Future implements FutureInterface
         } catch (\parallel\Future\Error $e) {
             throw new ParallelException(
                 '获取任务返回值失败: ' . $e->getMessage(),
-                (int)$e->getCode(),
+                (int) $e->getCode(),
                 $e
             );
+        } catch (\Throwable $e) {
+            throw $e instanceof ParallelException
+                ? $e
+                : new ParallelException(
+                    '任务执行失败: ' . $e->getMessage(),
+                    (int) $e->getCode(),
+                    $e,
+                    ['exception' => $e::class]
+                );
         }
     }
 
@@ -140,6 +152,10 @@ final class Future implements FutureInterface
     #[\Override]
     public function getId(): string
     {
+        if ($this->id === null) {
+            $this->id = spl_object_id($this->future) . '_' . bin2hex(random_bytes(8));
+        }
+
         return $this->id;
     }
 

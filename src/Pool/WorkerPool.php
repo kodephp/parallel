@@ -15,9 +15,11 @@ use Kode\Parallel\Util\Sys;
 /**
  * 通用工作池
  *
- * 与 ThreadPool 的区别：WorkerPool 构建在引擎抽象之上，
- * 因此在有无 ext-parallel 的环境中都能运行，并提供并发上限、
- * 批量 map、失败聚合与运行统计。
+ * 构建在引擎抽象之上，在有无 ext-parallel 的环境中都能运行，
+ * 并提供并发上限、批量 map、失败聚合与运行统计。
+ *
+ * 并发上限会作为线程数传给底层引擎：在 parallel 引擎下即开启对应数量的
+ * 解释器线程真正并行（单个 `\parallel\Runtime` 是 FIFO 串行的）。
  *
  * @since 1.6.0
  */
@@ -45,7 +47,8 @@ final class WorkerPool
     public function __construct(int $concurrency = 0, ?string $engine = null, ?string $bootstrap = null)
     {
         $this->concurrency = $concurrency > 0 ? $concurrency : Sys::recommendedConcurrency();
-        $this->engine = EngineFactory::create($engine, $bootstrap);
+        // 并发上限同时作为线程数传入，确保 parallel 引擎下并发真实生效（单 Runtime 为 FIFO 串行）
+        $this->engine = EngineFactory::create($engine, $bootstrap, $this->concurrency);
     }
 
     /**
