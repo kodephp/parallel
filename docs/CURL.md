@@ -53,15 +53,52 @@ final class CurlMulti
     public function get(string $url, array $headers = [], ?string $key = null): string;
     public function post(string $url, array|string $data = [], array $headers = [], ?string $key = null): string;
 
+    // 并发控制（滑动窗口：完成一个补一个）
+    public function setConcurrency(int $concurrency): self;
+
     // 执行
     public function execute(int $timeout = 30): array;
     public function clear(): void;
+
+    // 便捷静态方法：一行完成扇出
+    public static function fetch(array $urls, int $concurrency = 0, int $timeout = 30): array;
 
     // 状态
     public function count(): int;
     public function error(): ?string;
 }
 ```
+
+### 并发控制：必须限并发（v1.13.0）
+
+`setConcurrency(N)` 让在途连接始终保持 N 个，**完成一个立即补一个**（滑动窗口），
+不存在「整批等最慢者」的队头阻塞。不设并发度 = 一次性把所有请求全发出去，实测**比顺序还慢**。
+
+实测（200 请求 × 20ms 服务端延迟，`benchmarks/bench_curl.php`）：
+
+| 并发档 | 耗时 | 吞吐 | 相对顺序 |
+|-------|------|------|---------|
+| 顺序 curl | 5415 ms | 37 req/s | 1.0× |
+| 不限并发（一次 200 连接） | 10019 ms | 20 req/s | **0.4×** |
+| 4 | 1336 ms | 150 req/s | 4.1× |
+| 8 | 695 ms | 288 req/s | 7.8× |
+| **16（本机最优）** | **451 ms** | **444 req/s** | **8.9×** |
+| 32 | 561 ms | 356 req/s | 7.1× |
+| 64 | 5073 ms | 39 req/s | 1.1×（对端过载） |
+
+```php
+// 推荐写法：一行完成多用户扇出
+$results = CurlMulti::fetch($urls, concurrency: 16, timeout: 30);
+
+// 或链式
+$curl = new CurlMulti();
+$curl->setConcurrency(16);
+$curl->get('https://api.example.com/u/1', [], 'u1');
+$results = $curl->execute();
+```
+
+经验值 **8~32**，实际取决于对端承载能力，用 `bench_curl.php` 压出本机最优点。
+未完成的请求不会抛异常，而是以 `['error' => 'timeout']` 出现在结果中，便于按 key 精确重试。
 
 ---
 

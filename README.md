@@ -1,11 +1,11 @@
 # Kode/Parallel
 
-高性能 PHP 并行并发库，为 PHP 8.3+ 提供简洁、健壮的并行编程接口。**多引擎自动降级**：有 `ext-parallel` 用真线程，没有扩展也能靠多进程跑并行。
+高性能 PHP 并行并发库，为 PHP 8.3+ 提供简洁、健壮的并行编程接口。**以 `ext-parallel` 真线程为主线**：批量合并派发、逐元素容错、限并发 HTTP 扇出，多进程编排通过 `EngineFactory::register()` 接入 `kode/process` 等外部后端。
 
 [![PHP Version](https://img.shields.io/badge/PHP-%3E%3D8.3-blue)](https://php.net)
 [![License](https://img.shields.io/badge/License-Apache--2.0-green)](LICENSE)
-[![Package Version](https://img.shields.io/badge/Version-1.12.0-orange)](composer.json)
-[![Engines](https://img.shields.io/badge/Engines-parallel%20%7C%20process%20%7C%20sync-purple)](docs/ENGINE.md)
+[![Package Version](https://img.shields.io/badge/Version-1.13.0-orange)](composer.json)
+[![Engines](https://img.shields.io/badge/Engines-parallel%20%7C%20sync%20%7C%20pluggable-purple)](docs/ENGINE.md)
 
 ## 目录
 
@@ -18,6 +18,7 @@
 - [核心组件详解](#核心组件详解)
 - [PHP 8.5 新特性](#php-85-新特性)
 - [Fiber 协程](#fiber-协程)
+- [批量合并与使用场景](#批量合并与使用场景)
 - [性能压测](#性能压测)
 - [最佳实践](#最佳实践)
 - [常见问题](#常见问题)
@@ -88,9 +89,10 @@
 |------|------|
 | PHP 版本 | **>= 8.3**（使用类型化类常量、`json_validate()`、`#[\Override]` 等特性） |
 | 必需包 | kode/context ^3.0, kode/facade ^3.0, kode/fibers ^4.1 |
-| 可选扩展 | ext-parallel（真线程）、ext-pcntl + ext-posix（多进程）、ext-curl（CurlMulti） |
+| 推荐扩展 | **ext-parallel（真线程，主线能力）**、ext-curl（CurlMulti 扇出） |
 
-> 一个扩展都不装也能运行：库会自动选择可用引擎，只是并行度不同。
+> 未装 ext-parallel 时 API 完全一致，只是退化为顺序执行；要发挥本库性能请部署 **ZTS + ext-parallel**。
+> 需要多进程隔离时，通过 `EngineFactory::register()` 接入 `kode/process`。
 
 ### PHP 版本适配
 
@@ -341,8 +343,9 @@ $ready = Futures::select([$f1, $f2, $f3], timeoutMs: 1000);
 
 | 维度 | **kode/parallel** | Swoole 6.2（Thread） | ext-parallel | pthreads |
 |------|-------------------|----------------------|--------------|----------|
-| 并行模型 | 真线程 / 多进程 / 同步回退 | 真线程（ZTS） | 真线程（ZTS） | 真线程（ZTS，已废弃） |
-| **无需 ZTS / 扩展** | ✅ process/sync 引擎开箱即用 | ❌ 必须 ZTS + `--enable-swoole-thread` | ❌ 必须 ZTS | ❌ 必须 ZTS |
+| 并行模型 | 真线程（ext-parallel）+ 可插拔外部进程后端 | 真线程（ZTS） | 真线程（ZTS） | 真线程（ZTS，已废弃） |
+| 批量合并派发 | ✅ `mapBatch`（短任务 22× 于逐条） | ❌ 需自行分片 | ❌ | ❌ |
+| 逐元素容错 | ✅ `mapBatchSettled` | ⚠️ 自行 try/catch | ⚠️ | ❌ |
 | 统一 Future 契约 | ✅ `FutureInterface` | ❌ 线程对象 `join()` | 部分（`parallel\Future`） | ❌ |
 | 组合器 / select | ✅ all/settle/any/race/select | ❌ | ⚠️ 仅 `Events` | ❌ |
 | 同步原语 | ✅ Lock/Atomic/Barrier/Channel（引擎无关，**跨进程**） | ✅ Lock/Atomic/Map/Queue（**同进程共享内存**） | ✅ Mutex/Semaphore/Cond/Barrier | ⚠️ 同步方法 |
@@ -354,9 +357,9 @@ $ready = Futures::select([$f1, $f2, $f3], timeoutMs: 1000);
 > 且需禁用 pthreads；kode/parallel 的 `Concurrency\*` 原语在**普通非 ZTS PHP** 上即可运行，并天然**跨进程**共享状态——
 > 这是与 Swoole 线程（进程内共享内存）的根本差异。详见 [docs/SWOOLE_COMPARISON.md](docs/SWOOLE_COMPARISON.md)。
 
-**结论**：Swoole 多线程与 ext-parallel 都受限于「必须 ZTS 构建」，而 kode/parallel 的
-engine 抽象让同一份代码在普通 PHP CLI 上也能获得真多进程并行，并补齐了 Future 组合子、
-select 非阻塞等待与引擎无关同步原语——这是「最优最高」的调整方向。
+**结论**：三者在 ZTS 下同为真线程，kode/parallel 的增量价值在于**上层工程能力**——批量合并派发
+（`mapBatch`，高频短任务 22× 于逐条）、逐元素容错（`mapBatchSettled`）、Future 组合子与 select、
+引擎无关且跨进程的同步原语，以及限并发 HTTP 扇出（`CurlMulti`，实测 8.9×）。
 
 ---
 
@@ -566,7 +569,97 @@ $runtime->run($consumer);
 
 ---
 
-## 性能压测（v1.12.0，ZTS + ext-parallel 真线程 主线，实测可复现于 PHP 8.3.33 / 11 核）
+## 批量合并与使用场景
+
+### 高频短任务：用 `mapBatch` 而不是 `map`
+
+`map()` 逐条派发，每条都要序列化一次闭包与参数；`mapBatch()` 把一批元素合并为一次提交，
+**只序列化一次**。5 万条短消息实测：逐条 213k msg/s（比串行还慢），批量 1,655k msg/s。
+
+```php
+use Kode\Parallel\Pool\WorkerPool;
+
+$pool = new WorkerPool(11);                       // 线程数 ≈ CPU 核数
+
+// 批大小不传 = 自动推导（元素数 / 线程数 / 4，封顶 1024）
+$results = $pool->mapBatch($messages, static fn (array $m): string => render($m));
+
+// 群发场景用容错版：单条失败不连累同批其他元素
+$settled = $pool->mapBatchSettled($recipients, static fn (array $u): string => send($u));
+
+foreach ($settled as $key => $r) {
+    if ($r['status'] === 'rejected') {
+        // reason 恒为 ParallelException；原始异常类名见 getContext()['class']
+        $retry[$key] = $r['reason']->getMessage();
+    }
+}
+
+$pool->close();
+```
+
+函数式写法：`map_batch($items, $worker)` / `map_batch_settled($items, $worker)`。
+
+### 多用户 HTTP 扇出：`CurlMulti` 限并发
+
+```php
+use Kode\Parallel\Curl\CurlMulti;
+
+$urls = [];
+foreach ($users as $u) {
+    $urls['u' . $u['id']] = "https://api.example.com/notify?uid={$u['id']}";
+}
+
+// 滑动窗口：始终保持 16 个在途连接，完成一个补一个
+$results = CurlMulti::fetch($urls, concurrency: 16, timeout: 30);
+```
+
+纯等网络用 `CurlMulti`（实测 8.9×，内存最省）；**不限并发会比顺序还慢**（0.4×）。
+要「边请求边算」再用线程 `mapBatch`。
+
+### 业务约束速查
+
+| 业务 | 做法 |
+|------|------|
+| 群发邮件 / 站内信 / 推送 | `mapBatchSettled` + 幂等键，只重试失败项 |
+| 秒结分佣（实时到账） | **不要并行**，同事务顺序处理，链路短 |
+| 定时批量结算 | 按 `account_id` 分组：**组间并行、组内串行**；等级/价格不同的记录**不可合并计算** |
+| 千万级跑批 | 先按 `account_id % M` 分段，段内并行、段间顺序 |
+| 线程内依赖类 | 构造池时传 bootstrap：`new WorkerPool(11, null, __DIR__.'/vendor/autoload.php')` |
+| 线程内数据库 | 连接不可跨线程传递，任务内新建；每任务自包含事务 |
+
+完整场景与代码范式见 [USE_CASES.md](docs/USE_CASES.md)。
+
+---
+
+## 性能压测（v1.13.0，ZTS + ext-parallel 真线程 主线，实测可复现于 PHP 8.3.33 / 11 核）
+
+### 群发消息三档数据（`bench_message.php`，10 线程，批大小 auto）
+
+| 数据规模 | 条数 | 串行 | 逐条 `map` | **批量 `mapBatch`** | 4 进程 × 10 线程 |
+|---------|------|------|-----------|--------------------|-----------------|
+| 短 120B（推送通知） | 50,000 | 1,080,360 msg/s | 213,284（0.20×） | **1,655,145（1.53×）** | 1,209,158（1.12×） |
+| 中 4KB（站内信） | 20,000 | 125,026 msg/s | 174,400（1.39×） | **444,781（3.56×）** | 446,968（3.58×） |
+| 大 64KB（富文本邮件） | 2,000 | 8,025 msg/s | 46,445（5.79×） | **45,824（5.71×）** | 42,072（5.24×） |
+
+本机最优配置（`bench_tune.php` 网格扫描，串行基线取 3 轮最快）：
+
+| 负载 | 串行基线 | 单进程最优 | 进程 × 线程最优 |
+|------|---------|-----------|----------------|
+| 短 120B × 50,000 | 1,618,011 msg/s | 11 线程 + auto → 1,975,277（1.2×） | 4 进程 × 8 线程 → 2,300,871（1.4×） |
+| 中 4KB × 20,000 | 130,059 msg/s | **11 线程 + 批 128 → 644,390（5.0×）** | 8 进程 × 2 线程 → 564,734（4.3×） |
+| 大 64KB × 2,000 | 8,530 msg/s | **11 线程 + auto → 55,656（6.5×）** | 8 进程 × 2 线程 → 43,932（5.2×） |
+
+> **线程数 ≈ 核数即最优**；中/大数据下单进程多线程优于任何多进程组合（省掉 fork 与 IPC）。
+> 若已用 `kode/process` 起了 4 个进程，每进程再开 2~3 线程即可，**不要每进程再开 10 线程**。
+
+### 多用户 HTTP 扇出（`bench_curl.php`，200 请求 × 20ms 延迟）
+
+| 方式 | 耗时 | 吞吐 | 相对顺序 |
+|------|------|------|---------|
+| 顺序 curl | 5415 ms | 37 req/s | 1.0× |
+| `CurlMulti` 不限并发（一次 200 连接） | 10019 ms | 20 req/s | **0.4×（比顺序还慢）** |
+| **`CurlMulti` 并发 16** | **451 ms** | **444 req/s** | **8.9×** |
+| parallel 线程 × 8 + curl | 745 ms | 268 req/s | 5.4× |
 
 ### 单进程 vs 多线程 vs 多进程（同一份 CPU 任务，N=2000 独立单元，越高的 ops/s 越好）
 
@@ -595,11 +688,13 @@ Concurrency\Semaphore 进程内      ≈ 7.1M ops/s  (acquire+release)
 Concurrency\Barrier 跨进程会合    ≈ 431 回合/s  (4 方 ×50 回合)
 ```
 
-> 四角同类对比基线（同口径，可并排比较）：
-> `php benchmarks/bench_compare.php`（单进程/多线程/多进程对比）｜`bench_concurrency.php`（引擎无关原语）｜
+> 同口径基线脚本（可并排比较）：
+> `bench_compare.php`（单进程/多线程/多进程）｜`bench_batch.php`（批量 vs 逐条）｜`bench_message.php`（群发三档数据）｜
+> `bench_tune.php`（配置寻优网格）｜`bench_curl.php`（HTTP 扇出）｜`bench_concurrency.php`（引擎无关原语）｜
 > `bench_pcntl.php`（裸 pcntl 地板）｜`bench_swoole.php`（Swoole 6.2 线程，需 ZTS）｜`bench_ext_parallel.php`（ext-parallel 真线程）。
 
-调优方法见 [docs/PERFORMANCE.md](docs/PERFORMANCE.md)；完整数据与 Swoole 6.2 对标见
+**业务怎么选**见 [USE_CASES.md](docs/USE_CASES.md)（群发通知 / 分佣结算 / HTTP 扇出 / 线程内约束）；
+调优方法与版本自对比记录见 [PERFORMANCE.md](docs/PERFORMANCE.md)；完整数据见
 [BENCHMARK.md](docs/BENCHMARK.md)、[PROCESS_VS_THREAD.md](docs/PROCESS_VS_THREAD.md) 与 [SWOOLE_COMPARISON.md](docs/SWOOLE_COMPARISON.md)。
 
 ---
@@ -679,6 +774,7 @@ $runtime->run(fn($args) => $args['ch']->send($data), ['ch' => $channel]);
 | [DEVELOPMENT.md](docs/DEVELOPMENT.md) | 开发指南和 API 参考 |
 | [FIBER.md](docs/FIBER.md) | Fiber 协程详解 |
 | [PIPE.md](docs/PIPE.md) | Pipe 管道详解 |
+| [USE_CASES.md](docs/USE_CASES.md) | **使用场景与选型**：群发通知、分佣结算、HTTP 扇出、线程内约束 |
 | [CURL.md](docs/CURL.md) | CurlMulti 并行请求 |
 | [ADVANCED_USAGE.md](docs/ADVANCED_USAGE.md) | 高级用法和案例 |
 | [PTHREADS_COMPARISON.md](docs/PTHREADS_COMPARISON.md) | 与 pthreads 对比 |

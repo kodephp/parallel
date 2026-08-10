@@ -57,7 +57,7 @@ function close_shared_runtime(): void
  * 创建新的 Runtime 实例
  *
  * @param string|null $bootstrap 引导文件路径
- * @param string|null $engine 引擎名（parallel / process / sync）
+ * @param string|null $engine 引擎名（parallel / sync 或外部注册引擎）
  */
 function runtime(?string $bootstrap = null, ?string $engine = null): Runtime
 {
@@ -115,6 +115,46 @@ function map_settled(iterable $items, callable $worker, int $concurrency = 0): a
 
     try {
         return $pool->mapSettled($items, $worker);
+    } finally {
+        $pool->close();
+    }
+}
+
+/**
+ * 批量并行映射：每 $batchSize 个元素打包为一次引擎提交，减少 ext-parallel 序列化开销
+ *
+ * 适合高频短任务（群发通知、批量轻量计算）。详见 {@see WorkerPool::mapBatch()}。
+ *
+ * @param iterable<array-key, mixed> $items
+ * @param int $concurrency 并发上限，<=0 按 CPU 核心数推荐
+ * @param int $batchSize 每批元素数，<=0 自动推导，1 退化为 map()
+ * @return array<array-key, mixed>
+ */
+function map_batch(iterable $items, callable $worker, int $concurrency = 0, int $batchSize = 0): array
+{
+    $pool = new WorkerPool($concurrency);
+
+    try {
+        return $pool->mapBatch($items, $worker, $batchSize);
+    } finally {
+        $pool->close();
+    }
+}
+
+/**
+ * 批量并行映射（逐元素容错版）
+ *
+ * @param iterable<array-key, mixed> $items
+ * @param int $concurrency 并发上限，<=0 按 CPU 核心数推荐
+ * @param int $batchSize 每批元素数，<=0 自动推导，1 退化为 map_settled()
+ * @return array<array-key, array{status: string, value?: mixed, reason?: \Throwable}>
+ */
+function map_batch_settled(iterable $items, callable $worker, int $concurrency = 0, int $batchSize = 0): array
+{
+    $pool = new WorkerPool($concurrency);
+
+    try {
+        return $pool->mapBatchSettled($items, $worker, $batchSize);
     } finally {
         $pool->close();
     }

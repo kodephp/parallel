@@ -188,8 +188,8 @@ $ready = Futures::select([$f1, $f2, $f3], timeoutMs: 1000); // 超时无就绪�
 
 | 维度 | **kode/parallel** | Swoole 6（Thread） | ext-parallel |
 |------|-------------------|--------------------|--------------|
-| 并行模型 | 真线程 / 多进程 / 同步回退 | 真线程（ZTS） | 真线程（ZTS） |
-| 无需 ZTS / 扩展 | ✅ process/sync 开箱即用 | ❌ 必须 ZTS | ❌ 必须 ZTS |
+| 并行模型 | 真线程（ext-parallel）+ 可插拔外部进程后端 | 真线程（ZTS） | 真线程（ZTS） |
+| 批量合并派发 | ✅ `mapBatch` / `mapBatchSettled` | ❌ 需自行分片 | ❌ |
 | 统一 Future 契约 | ✅ | ❌ | 部分 |
 | 组合器 / select | ✅ all/settle/any/race/select | ❌ | ⚠️ 仅 Events |
 | 同步原语 | ✅ Lock/Atomic/Barrier/Channel（引擎无关） | ✅ Lock/Atomic/Map/Queue | ✅ Mutex/Semaphore/Cond/Barrier |

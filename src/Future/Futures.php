@@ -233,6 +233,28 @@ final class Futures
     }
 
     /**
+     * 展平批量映射的结果
+     *
+     * 将 {@see WorkerPool::mapBatch()} / {@see Runtime::runBatch()} 产出的
+     * 「批次→结果数组」结构合并为按原始顺序的单一结果数组。
+     *
+     * @param iterable<array-key, array<array-key, mixed>> $batchResults 每元素为一个批次的结果数组
+     * @return array<array-key, mixed>
+     */
+    public static function flatten(iterable $batchResults): array
+    {
+        $out = [];
+
+        foreach ($batchResults as $batch) {
+            foreach ($batch as $key => $value) {
+                $out[$key] = $value;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * 统计已完成数量
      *
      * @param iterable<array-key, FutureInterface> $futures
