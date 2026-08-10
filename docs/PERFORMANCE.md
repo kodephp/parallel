@@ -1,6 +1,6 @@
 # Kode/Parallel 调优指南
 
-> 版本：`v1.17.0` ｜ 目标：在「引擎无关、可移植、跨进程安全」的前提下，把吞吐与延迟推到合理上限。
+> 版本：`v1.18.0` ｜ 目标：在「引擎无关、可移植、跨进程安全」的前提下，把吞吐与延迟推到合理上限。
 > 配合 `docs/BENCHMARK.md`（实测数据）与 `docs/SWOOLE_COMPARISON.md`（同类对比）阅读。
 > **单线程 vs 多线程真实提速见 [BENCHMARK.md §单线程 vs 多线程](BENCHMARK.md)；跨线程/进程数据同步见 [CROSS_PROCESS.md](CROSS_PROCESS.md)。**
 
@@ -36,6 +36,10 @@ $pool = new WorkerPool(concurrency: (int) shell_exec('nproc') ?: 4);
 - 计算密集型：并发 = 核数即可，过多反而因上下文切换掉速；
 - IO 密集型（网络/磁盘）：可适当高于核数（如 2×），让等待时间被其他任务填充；
 - `parallel` 引擎每个 worker 是一条真线程（共享进程内存），并发越高内存占用越可控，但线程数超过核数不再提速。
+
+> **`WorkerPool` vs `ThreadPool`**：常规并行映射用 `WorkerPool`（槽位满则阻塞调用方，且 `map` 自动批量合并、吞吐最高）；
+> 需要**非阻塞提交 / 预排海量任务 / 在协程或事件循环里派发**时用 `ThreadPool`（常驻 worker 线程从队列异步消费，
+> 但逐任务序列化、原始吞吐低于 `WorkerPool`）。实测与选型见 [USE_CASES.md §十](USE_CASES.md) 与 [BENCHMARK.md §v1.18.0](BENCHMARK.md)。
 
 ---
 

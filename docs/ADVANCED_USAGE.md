@@ -1,7 +1,7 @@
 # Kode/Parallel 高级用法与结合案例
 
 本文档展示如何结合使用 kode/parallel 的现有组件，实现复杂的并行编程模式。所有示例均使用当前
-公开 API（`Concurrency\*` 引擎无关原语、`Futures` 组合器、`WorkerPool` 工作池、`Channel` 单运行时通道）。
+公开 API（`Concurrency\*` 引擎无关原语、`Futures` 组合器、`WorkerPool` 工作池、`ThreadPool` 多线程池（非阻塞派发）、`Channel` 单运行时通道）。
 
 ## 目录
 
@@ -347,6 +347,34 @@ echo "stats: ";
 print_r($pool->stats());            // engine / submitted / completed / failed / pending
 $pool->close();
 ```
+
+---
+
+### 9.1 非阻塞多线程池 `ThreadPool`
+
+若 `WorkerPool::submit()` 在槽位满时阻塞调用方不适合你的场景（如生产者远快于消费者、需预排海量任务、
+或在协程/事件循环中派发），用 `ThreadPool`：其 `submit()` **永不阻塞**，任务进入进程内队列立即返回 Future，
+由 N 个常驻 worker 线程在空闲时异步消费。
+
+```php
+<?php
+require_once __DIR__ . '/vendor/autoload.php';
+
+use Kode\Parallel\Pool\ThreadPool;
+
+$pool = new ThreadPool(8);   // 8 个常驻工作线程
+
+// 一口气预排，不阻塞调用方（实测 2 万任务 submit 合计 ≈18ms）
+foreach ($jobs as $i => $job) {
+    $futures[$i] = $pool->submit($job, ['x' => $i]);
+}
+
+$results = $pool->wait();    // 需要时再阻塞收集
+$pool->close();
+```
+
+> `ThreadPool` 逐任务序列化、无 `WorkerPool` 的自动批量合并，原始吞吐低于 `WorkerPool`；其价值在非阻塞与常驻线程复用。
+> 选型与实测见 [USE_CASES.md §十](USE_CASES.md) 与 [BENCHMARK.md §v1.18.0](BENCHMARK.md)。
 
 ---
 

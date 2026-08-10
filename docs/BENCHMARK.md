@@ -1,7 +1,7 @@
 # Kode/Parallel 性能基准报告
 
-> 版本：`v1.17.0` ｜ kode 栈：`kode/context 3.1.0` / `kode/facade 3.2.0` / `kode/fibers 4.5.0`
-> 本次重点：**单线程 vs 多线程纯 CPU 扫描（轻/重任务双区间，无歧义提速数字）、跨进程同步原语真实吞吐（Atomic 跨进程零丢失）、Barrier 跨代误唤醒死锁修复（v1.17.0）**。所有数据均为 ZTS 实测多跑取稳定值。
+> 版本：`v1.18.0` ｜ kode 栈：`kode/context 3.1.0` / `kode/facade 3.2.0` / `kode/fibers 4.5.0`
+> 本次重点：**新增多线程池 `ThreadPool`（非阻塞派发 + 常驻 worker 线程，与 `WorkerPool` 的槽位阻塞语义互补）、单线程 vs 多线程纯 CPU 扫描、跨进程同步原语真实吞吐、Barrier 跨代误唤醒死锁修复**。所有数据均为 ZTS 实测多跑取稳定值。
 > 下方数据均为真实运行结果（非估算），场景化解读见 [USE_CASES.md](USE_CASES.md)。
 
 ## 测试环境（本仓库实测，可复现）
@@ -278,11 +278,32 @@ $db->withPermits(1, fn () => query());  // 至多 8 个并发
 > 单任务约 165 ns 量级、等效 **~6M ops/s**——与 v1.14.0 `bench_batch` 的 map 自动批量（9.89M~10.32M）同量级，
 > 互相印证退避优化真实生效。组合器可放心在热路径中随意组合。
 
+## v1.18.0 新增：多线程池 `ThreadPool`（非阻塞派发）
+
+`benchmarks/bench_thread_pool.php` 量化 `ThreadPool`（非阻塞队列 + 常驻 worker 线程）与 `WorkerPool`（槽位阻塞）的差异。
+环境：PHP 8.3.33 / ZTS / ext-parallel / 8 线程 / 11 核。
+
+**A. 非阻塞提交**：一口气预排 20,000 个任务，`submit()` 合计仅 **≈18 ms（≈0.9µs/submit）**，提交后队列积压 **19,992** 个。
+证明 `submit()` 永不阻塞调用方——这是与 `WorkerPool::submit()`（槽位满则阻塞）的**根本区别**。
+
+**B. 同份中等 CPU 任务（2,000 单元）吞吐对比**：
+
+| 方式 | 耗时 | 加速比 |
+|------|------|-------|
+| 串行 | 56 ms | 1.0× |
+| `ThreadPool.map`（逐任务序列化） | 19 ms | **≈3.0×** |
+| `WorkerPool.map`（自动批量合并） | 12 ms | **≈4.7×** |
+
+> 解读：`ThreadPool` 因**逐任务序列化、无自动批量合并**，原始吞吐低于 `WorkerPool`（约低 1/3）。
+> 它的核心价值是**非阻塞提交 + 常驻线程复用**，而非极限吞吐——适合生产者远快于消费者、需预排海量任务、
+> 或在协程/事件循环里派发的场景。高频短任务要最高吞吐仍用 `WorkerPool::mapBatch()`。两者底层都是 ext-parallel 真线程。
+
 ## 复现
 
 ```bash
 php benchmarks/bench_compare.php         # 单进程 / 多线程 / 多进程 三向对比（本机最优配置自动扫描）
 php benchmarks/bench_futures.php         # Futures 组合器层开销（all/settle/race/any/select）
+php benchmarks/bench_thread_pool.php     # 多线程池 ThreadPool 非阻塞派发 vs WorkerPool
 php benchmarks/bench_batch.php           # 批量合并 vs 逐条派发（自对比）
 php benchmarks/bench_message.php         # 群发消息：短/中/大三档数据 + 多进程×多线程
 PROFILE=medium php benchmarks/bench_tune.php   # 配置寻优：线程×批大小、进程×线程 网格

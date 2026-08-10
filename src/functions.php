@@ -13,6 +13,7 @@ use Kode\Parallel\Engine\EngineFactory;
 use Kode\Parallel\Exception\ParallelException;
 use Kode\Parallel\Future\FutureInterface;
 use Kode\Parallel\Future\Futures;
+use Kode\Parallel\Pool\ThreadPool;
 use Kode\Parallel\Pool\WorkerPool;
 use Kode\Parallel\Runtime\Runtime;
 use Kode\Parallel\Runtime\SharedRuntime;
@@ -81,6 +82,18 @@ function task(\Closure $closure): Task
 function pool(int $concurrency = 0, ?string $engine = null): WorkerPool
 {
     return new WorkerPool($concurrency, $engine);
+}
+
+/**
+ * 创建多线程池（非阻塞派发 + 常驻 worker 线程）
+ *
+ * @param int $size 工作线程数（并发上限），<=0 按 CPU 核心数推荐
+ * @param string|null $bootstrap 引导文件（通常为 vendor/autoload.php）
+ * @see ThreadPool
+ */
+function thread_pool(int $size = 0, ?string $bootstrap = null): ThreadPool
+{
+    return new ThreadPool($size, $bootstrap);
 }
 
 /**

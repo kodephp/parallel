@@ -51,7 +51,7 @@
 | 层级 | 能力 | 组件 |
 |------|------|------|
 | **执行引擎** | 真线程主线 + 同步回退 + 可插拔外部后端 | EngineFactory, ParallelEngine, SyncEngine |
-| **本地并行** | 多线程执行 | Runtime, Task, Future, Futures, WorkerPool, Channel |
+| **本地并行** | 多线程执行 | Runtime, Task, Future, Futures, WorkerPool, ThreadPool, Channel |
 | **引擎无关同步原语** | 互斥/原子计数/屏障/通道（**无需 ext-parallel / ZTS**，对标 Swoole Thread） | Concurrency\Lock, Atomic, AtomicLong, Barrier, Channel, Semaphore |
 | **协程支持** | Fiber 协程 | Fiber, FiberManager |
 | **HTTP 并行** | 并行请求 | CurlMulti |
@@ -67,7 +67,8 @@
 | **Task** | 并行任务闭包封装，含 ext-parallel 限制校验（可关闭） |
 | **Future** | 异步任务返回值访问，统一 `FutureInterface` 契约，支持 `then` / `map` / `catch` 组合子 |
 | **Futures** | 组合器：`all` / `settle` / `any` / `race` / `select`（非阻塞），全部支持超时 |
-| **WorkerPool** | 引擎无关工作池：并发上限、`map` / `mapSettled`、运行统计 |
+| **WorkerPool** | 引擎无关工作池：并发上限、`map` / `mapSettled`、运行统计（槽位满时阻塞调用方） |
+| **ThreadPool** | 多线程池（**非阻塞派发 + 常驻 worker 线程**）：`submit` 永不阻塞、队列积压、`map` / `mapSettled`、统计；适合生产者快于消费者 / 需预排大量任务 |
 | **Channel** | 引擎无关单运行时消息通道，支持有/无界限（见 `Concurrency\Channel`） |
 | **Fiber** | PHP Fiber 协程封装（基于 kode/fibers） |
 | **Concurrency** | **引擎无关同步原语**：`Lock` / `Atomic` / `AtomicLong` / `Barrier` / `Channel` / `Semaphore`，无需 ext-parallel / ZTS，对标 Swoole 6 `Thread\Lock/Atomic/Barrier/Queue` |
@@ -284,6 +285,33 @@ $pool->close();
 > 对象/资源即在同一进程内，取回结果不经过 IPC 序列化；这与多进程模型（kode/process）有本质区别——
 > 后者需跨进程序列化。需要跨进程共享状态时仍可使用 `Concurrency\*` 原语或外部存储。
 
+### ThreadPool 多线程池（非阻塞派发）
+
+与 `WorkerPool` 的关键区别在**派发语义**：`WorkerPool::submit()` 在槽位满时会**阻塞调用方**；
+`ThreadPool::submit()` **永不阻塞**——任务先进入进程内队列立即返回 `Future`，由 N 个常驻
+`\parallel\Runtime` 工作线程在空闲时自行拉取执行。适合生产者远快于消费者、需要预排成千上万个
+任务、或在协程/事件循环里非阻塞提交的场景。
+
+```php
+use Kode\Parallel\Pool\ThreadPool;
+
+$pool = new ThreadPool(8);
+
+// submit 立即返回，不等待线程空闲；可一口气预排海量任务
+$f = $pool->submit(static fn(array $a): int => heavy($a['x']), ['x' => $i]);
+
+// 队列积压由工作线程异步消费；需要时再阻塞取结果
+$value = $f->get();
+
+// 也可等全部完成
+$pool->wait();
+$pool->close();
+```
+
+> **吞吐取舍**：`ThreadPool` 逐任务序列化、无 `WorkerPool` 的自动批量合并，因此高频短任务的原始
+> 吞吐通常低于 `WorkerPool`（见基准）。它的核心价值是**非阻塞提交 + 常驻线程复用**，而非极限吞吐。
+> 高频短任务仍优先 `WorkerPool::mapBatch()`。
+
 ### 引擎无关同步原语（Concurrency）
 
 v1.7.0 新增的 `Kode\Parallel\Concurrency\*` 系列，**不依赖 ext-parallel / ZTS**，在 stock PHP CLI
@@ -349,7 +377,7 @@ $ready = Futures::select([$f1, $f2, $f3], timeoutMs: 1000);
 | 统一 Future 契约 | ✅ `FutureInterface` | ❌ 线程对象 `join()` | 部分（`parallel\Future`） | ❌ |
 | 组合器 / select | ✅ all/settle/any/race/select | ❌ | ⚠️ 仅 `Events` | ❌ |
 | 同步原语 | ✅ Lock/Atomic/Barrier/Channel（引擎无关，**跨进程**） | ✅ Lock/Atomic/Map/Queue（**同进程共享内存**） | ✅ Mutex/Semaphore/Cond/Barrier | ⚠️ 同步方法 |
-| 工作池 | ✅ 引擎无关 `WorkerPool` | ⚠️ `Thread\Pool` | ❌（需自管 Runtime） | ❌ |
+| 工作池 | ✅ 引擎无关 `WorkerPool` + 非阻塞 `ThreadPool` | ⚠️ `Thread\Pool` | ❌（需自管 Runtime） | ❌ |
 | 协程 | ✅ Fiber 集成 | ✅ 协程 | ❌ | ❌ |
 | 最低 PHP | 8.3 | 8.1–8.5（线程需 ZTS） | 7.2（ZTS） | 7.2（ZTS） |
 
@@ -637,7 +665,7 @@ $results = CurlMulti::fetch($urls, concurrency: 16, timeout: 30);
 
 ---
 
-## 性能压测（v1.17.0，ZTS + ext-parallel 真线程 主线，实测可复现于 PHP 8.3.33 / 11 核）
+## 性能压测（v1.18.0，ZTS + ext-parallel 真线程 主线，实测可复现于 PHP 8.3.33 / 11 核）
 
 ### 群发消息三档数据（`bench_message.php`，10 线程，批大小 auto）
 
@@ -705,6 +733,16 @@ $results = CurlMulti::fetch($urls, concurrency: 16, timeout: 30);
 > - **琐碎任务**：单进程顺序执行反而最快（零调度开销）——并行仅在「处理量足以摊销调度成本」时才有收益。
 > - **最优配置**：多线程线程数 ≈ CPU 逻辑核心数（`Runtime(null,'parallel', cores)`）；超过核心数不再提速。
 
+### ThreadPool 多线程池（非阻塞派发，v1.18.0 新增）
+
+`ThreadPool` 与 `WorkerPool` 同为真线程池，差异在**派发语义**。`bench_thread_pool.php` 实测（8 线程 / 11 核）：
+
+- **非阻塞提交**：一口气预排 20,000 个任务，`submit()` 合计仅 ~18ms（**≈0.9µs/submit**），提交后队列积压 19,992 个——证明 `submit()` 永不阻塞、调用方不被槽位占用。
+- **吞吐取舍**：同一份中等 CPU 任务（2,000 单元）下，串行 56ms、**`ThreadPool.map` ≈3.0×**、**`WorkerPool.map` ≈4.7×**。
+  `ThreadPool` 逐任务序列化、无 `WorkerPool` 的自动批量合并，原始吞吐低于 `WorkerPool`。
+
+> **选型**：要**非阻塞提交 / 预排海量任务 / 常驻线程复用** → `ThreadPool`；要**最高原始吞吐的高频短任务** → `WorkerPool::mapBatch()`；常规并行映射 → `WorkerPool::map()`。详见 [USE_CASES.md](docs/USE_CASES.md)。
+
 ### 引擎无关同步原语（与引擎无关，多引擎下一致）
 
 ```
@@ -718,7 +756,7 @@ Concurrency\Barrier 跨进程会合    ≈ 431 回合/s  (4 方 ×50 回合)
 
 > 同口径基线脚本（可并排比较）：
 > `bench_compare.php`（单进程/多线程/多进程）｜`bench_batch.php`（批量 vs 逐条）｜`bench_message.php`（群发三档数据）｜
-> `bench_tune.php`（配置寻优网格）｜`bench_curl.php`（HTTP 扇出）｜`bench_futures.php`（Futures 组合器层开销）｜`bench_concurrency.php`（引擎无关原语）｜
+> `bench_tune.php`（配置寻优网格）｜`bench_curl.php`（HTTP 扇出）｜`bench_futures.php`（Futures 组合器层开销）｜`bench_thread_pool.php`（ThreadPool 非阻塞派发）｜`bench_concurrency.php`（引擎无关原语）｜
 > `bench_pcntl.php`（裸 pcntl 地板）｜`bench_swoole.php`（Swoole 6.2 线程，需 ZTS）｜`bench_ext_parallel.php`（ext-parallel 真线程）。
 
 ### Futures 组合器开销（bench_futures，ZTS 实测）

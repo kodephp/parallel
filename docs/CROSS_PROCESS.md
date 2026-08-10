@@ -1,6 +1,6 @@
 # 跨线程 / 跨进程的数据同步
 
-> 适用版本：v1.17.0 ｜ 主线引擎：ZTS + ext-parallel 真线程；多进程由 `kode/process` 经 `EngineFactory::register()` 接入。
+> 适用版本：v1.18.0 ｜ 主线引擎：ZTS + ext-parallel 真线程；多进程由 `kode/process` 经 `EngineFactory::register()` 接入。
 
 本库聚焦**多线程**（`parallel` 引擎）。无论线程还是进程，一个根本任务之间**不存在「共享内存里的 PHP 变量」**——这是使用并行最容易被忽略、也最容易导致「数据没生效 / 计数对不上」的根因。本文把这件事讲清楚，并给出正确的同步写法。
 

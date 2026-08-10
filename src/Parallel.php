@@ -9,6 +9,7 @@ use Kode\Parallel\Engine\ParallelEngine;
 use Kode\Parallel\Engine\SyncEngine;
 use Kode\Parallel\Future\FutureInterface;
 use Kode\Parallel\Future\Futures;
+use Kode\Parallel\Pool\ThreadPool;
 use Kode\Parallel\Pool\WorkerPool;
 use Kode\Parallel\Runtime\Runtime;
 use Kode\Parallel\Runtime\SharedRuntime;
@@ -218,6 +219,22 @@ final class Parallel
     public static function pool(int $concurrency = 0, ?string $engine = null): WorkerPool
     {
         return new WorkerPool($concurrency, $engine);
+    }
+
+    /**
+     * 创建多线程池（非阻塞派发 + 常驻 worker 线程）
+     *
+     * 与 {@see self::pool()} 的区别：{@see ThreadPool::submit()} 永不阻塞，任务进入
+     * 进程内队列立即返回 Future，由 N 个常驻线程自行拉取执行。适合生产者远快于消费者、
+     * 需要预排大量任务或在协程/事件循环中非阻塞提交的场景。
+     *
+     * @param int $size 工作线程数（并发上限），<=0 按 CPU 核心数推荐
+     * @param string|null $bootstrap 引导文件（通常为 vendor/autoload.php），用于任务闭包内使用业务类
+     * @throws \Kode\Parallel\Exception\ParallelException 环境无 ext-parallel 真线程
+     */
+    public static function threadPool(int $size = 0, ?string $bootstrap = null): ThreadPool
+    {
+        return new ThreadPool($size, $bootstrap);
     }
 
     /**
