@@ -6,6 +6,7 @@ namespace Kode\Parallel\Tests;
 
 use Kode\Parallel\Exception\ParallelException;
 use Kode\Parallel\Future\Futures;
+use Kode\Parallel\Future\FutureInterface;
 use Kode\Parallel\Future\ValueFuture;
 use PHPUnit\Framework\TestCase;
 
@@ -110,6 +111,103 @@ final class FuturesTest extends TestCase
             ValueFuture::resolved('first'),
             ValueFuture::resolved('second'),
         ]));
+    }
+
+    /**
+     * race() 必须能真正进入轮询路径：用「前 N 次 poll 才完成」的 fake future 强制其
+     * 多次 usleep 后再判定首个 settle 者。此前 race() 在轮询分支引用了已删除的常量
+     * self::POLL_INTERVAL_US，一旦进入此路径即 fatal——本测试锁定该回归。
+     */
+    public function testRacePollsAndReturnsFirstSettled(): void
+    {
+        $slow = $this->makePendingFuture('slow', 5);
+        $fast = $this->makePendingFuture('fast', 1);
+
+        $this->assertSame('fast', Futures::race([$slow, $fast]));
+    }
+
+    /**
+     * any() 同样需能进入轮询路径并正确返回首个成功（而非首个失败）的结果。
+     */
+    public function testAnyPollsAndReturnsFirstResolved(): void
+    {
+        $fail = $this->makePendingFuture(null, 5, rejected: true);
+        $ok = $this->makePendingFuture('ok', 1);
+
+        $this->assertSame('ok', Futures::any([$fail, $ok]));
+    }
+
+    /**
+     * 构造一个前 $pollsUntilDone 次 done() 都返回 false 的 fake future，
+     * 用以确定性地逼出组合器的轮询路径（$polls 在每次 done() 调用时自增）。
+     */
+    private function makePendingFuture(mixed $value, int $pollsUntilDone, bool $rejected = false): FutureInterface
+    {
+        return new class($value, $pollsUntilDone, $rejected) implements \Kode\Parallel\Future\FutureInterface {
+            public function __construct(
+                private mixed $value,
+                private int $pollsUntilDone,
+                private bool $rejected,
+                private int $polls = 0,
+            ) {
+            }
+
+            public function done(): bool
+            {
+                $this->polls++;
+
+                return $this->polls > $this->pollsUntilDone;
+            }
+
+            public function get(): mixed
+            {
+                if ($this->rejected) {
+                    throw new \RuntimeException('boom');
+                }
+
+                return $this->value;
+            }
+
+            public function getOrNull(): mixed
+            {
+                return $this->done() ? $this->value : null;
+            }
+
+            public function wait(int $timeoutMs = 0): bool
+            {
+                return $this->done();
+            }
+
+            public function cancel(): bool
+            {
+                return false;
+            }
+
+            public function isCancelled(): bool
+            {
+                return false;
+            }
+
+            public function getId(): string
+            {
+                return 'fake_' . spl_object_id($this);
+            }
+
+            public function then(callable $onFulfilled, ?callable $onRejected = null): FutureInterface
+            {
+                return $this;
+            }
+
+            public function map(callable $transform): FutureInterface
+            {
+                return $this;
+            }
+
+            public function catch(callable $onRejected): FutureInterface
+            {
+                return $this;
+            }
+        };
     }
 
     public function testCountDoneAndCancelAll(): void

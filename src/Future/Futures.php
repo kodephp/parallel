@@ -170,7 +170,8 @@ final class Futures
                 throw new ParallelException('Futures::race() 等待超时');
             }
 
-            usleep(self::POLL_INTERVAL_US);
+            usleep($sleep);
+            $sleep = min($sleep * 2, self::MAX_POLL_US);
         }
     }
 

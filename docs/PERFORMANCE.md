@@ -1,7 +1,8 @@
 # Kode/Parallel 调优指南
 
-> 目标：在「引擎无关、可移植、跨进程安全」的前提下，把吞吐与延迟推到合理上限。
+> 版本：`v1.15.0` ｜ 目标：在「引擎无关、可移植、跨进程安全」的前提下，把吞吐与延迟推到合理上限。
 > 配合 `docs/BENCHMARK.md`（实测数据）与 `docs/SWOOLE_COMPARISON.md`（同类对比）阅读。
+> **单线程 vs 多线程真实提速见 [BENCHMARK.md §单线程 vs 多线程](BENCHMARK.md)；跨线程/进程数据同步见 [CROSS_PROCESS.md](CROSS_PROCESS.md)。**
 
 ---
 
@@ -17,6 +18,8 @@
 
 **调优点**：生产环境若追求极致同进程吞吐，优先部署 **ZTS + ext-parallel**；否则 `sync` 回退仍保证 API 一致，
 跨进程共享状态用 `Lock`/`Atomic`/`Barrier`。需要真正的多进程时再接入 `kode/process`。可用 `EngineFactory::detect()` 确认当前引擎。
+
+> **关键认知：单线程（threads=1）不会提速，反而比串行慢 10%~20%。** 它只是把任务经 FIFO 队列派发到「唯一一个」worker 线程再回收，多一次序列化往返、却无并发。开线程的目的永远是**多线程并发**——线程数 ≈ CPU 核数（本机 11）时封顶，中/大数据约 **5×~7×**，相对单线程本身约 **6×~7×**。详见 [BENCHMARK.md 单线程 vs 多线程](BENCHMARK.md)。
 
 ---
 
