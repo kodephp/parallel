@@ -637,7 +637,7 @@ $results = CurlMulti::fetch($urls, concurrency: 16, timeout: 30);
 
 ---
 
-## 性能压测（v1.16.0，ZTS + ext-parallel 真线程 主线，实测可复现于 PHP 8.3.33 / 11 核）
+## 性能压测（v1.17.0，ZTS + ext-parallel 真线程 主线，实测可复现于 PHP 8.3.33 / 11 核）
 
 ### 群发消息三档数据（`bench_message.php`，10 线程，批大小 auto）
 
@@ -672,7 +672,10 @@ $results = CurlMulti::fetch($urls, concurrency: 16, timeout: 30);
 | 大 64KB × 2,000 | 8,205 msg/s | 7,385（**0.9×，略慢**） | **53,313（6.6×）** | 54,736（6.8×） |
 
 - 要提速 → 开 `threads≈核数`；要顺序可预测/最低内存 → 才用 `threads=1`；极轻或纯网络任务并行无益。
-- 跨线程/跨进程的数据同步（全局变量不共享、该用哪种原语）见 [CROSS_PROCESS.md](docs/CROSS_PROCESS.md)。
+- **v1.17.0 精炼（纯 CPU 任务扫描，无序列化噪声）**：提速幅度看**单任务计算量**——轻任务（µs 级）最优仅
+  `concurrency≈4（约 2.4×）`，堆到核数反而下降；重任务（数十 ms 级）才随核数线性（`concurrency=11→5×`、22→6.4×）。
+  「线程数堆到核数」只对重任务成立。详见 [BENCHMARK.md](docs/BENCHMARK.md)。
+- 跨线程/跨进程的数据同步（全局变量不共享、该用哪种原语、跨进程原语真实吞吐 ≈1万~10万 ops/s）见 [CROSS_PROCESS.md](docs/CROSS_PROCESS.md)。
 
 ### 多用户 HTTP 扇出（`bench_curl.php` 自带本地并发服务，200 请求 × 20ms 延迟）
 

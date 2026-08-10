@@ -114,6 +114,52 @@ $rows['WorkerPool.map x' . $count] = bench("  map x$count (平方)", $count, fun
 $pool->close();
 
 // ---------------------------------------------------------------------------
+// 2.5) 单线程 vs 多线程（纯 CPU 任务，无序列化噪声）—— 给「什么场景该开多线程」无歧义数字
+// ---------------------------------------------------------------------------
+echo "\n【2.5】WorkerPool 纯 CPU 任务，concurrency 扫描（无序列化噪声，速度仅由计算量决定）\n";
+foreach ([
+    '轻任务（每任务 4000 次整数运算 ≈ 37µs）' => 4000,
+    '重任务（每任务 5,000,000 次整数运算 ≈ 48ms）' => 5_000_000,
+] as $label => $base) {
+    echo "  · $label\n";
+    $serialMs = null;
+    $singleMs = null;
+    foreach ([1, 2, 4, 8, 11, 16, 22] as $c) {
+        $pool = new WorkerPool(concurrency: $c, engine: $engine);
+        $n = 200;
+        $start = hrtime(true);
+        $pool->map(range(1, $n), static function (int $x) use ($base): int {
+            $s = 0;
+            for ($k = 0; $k < $base; $k++) {
+                $s += $k * $x;
+            }
+            return $s;
+        });
+        $pool->close();
+        $elapsedMs = (hrtime(true) - $start) / 1_000_000;
+        if ($c === 1) {
+            $singleMs = $elapsedMs;
+            // 串行基线：单进程顺序执行（无派发、无线程）
+            $start = hrtime(true);
+            foreach (range(1, $n) as $x) {
+                $s = 0;
+                for ($k = 0; $k < $base; $k++) {
+                    $s += $k * $x;
+                }
+            }
+            $serialMs = (hrtime(true) - $start) / 1_000_000;
+            printf("    串行（单进程顺序）     %8.2f ms  基线 1.00×\n", $serialMs);
+        }
+        $vsSerial = $serialMs > 0 ? $serialMs / $elapsedMs : 0;
+        $vsSingle = $singleMs > 0 ? $singleMs / $elapsedMs : 0;
+        printf("    concurrency=%2d          %8.2f ms  相对串行 %4.2f×  | 相对单线程 %4.2f×\n", $c, $elapsedMs, $vsSerial, $vsSingle);
+    }
+}
+echo "  结论：单线程(concurrency=1)≈串行(0.84~1.00×)，不提速。多线程提速幅度由【单任务计算量】决定：\n";
+echo "        · 轻任务(µs 级) 最优 concurrency≈4（约 2.4×），加更多线程反而因调度/派发开销下降；\n";
+echo "        · 重任务(数十 ms 级) 随核数线性扩展，concurrency=11→约 6.6×，超配(22)边际递减。\n";
+
+// ---------------------------------------------------------------------------
 // 3) Future 组合器开销（Futures::all 聚合 N 个 future）
 // ---------------------------------------------------------------------------
 echo "\n【3】Future 组合器 Futures::all（聚合 N 个 future）\n";

@@ -75,11 +75,14 @@ final class Barrier
             $this->persist($state);
             $this->lock->unlock();
 
-            // 自旋等待：本代被放行（released）或进入下一代（gen 变化）
+            // 自旋等待：必须等到本代被整体放行并进入下一代（gen 递增）才返回。
+            // 仅以 gen 变化作为放行信号——不能用 released 标志：最后到达者先置 released=true
+            // （此时 gen 尚未递增）再解锁，若此刻新一代首个参与者读到 released=true 会误唤醒、
+            // 在凑齐 count 个参与方之前提前返回。以 gen 变化为准可杜绝该跨进程误唤醒。
             while (true) {
                 $this->lock->lock();
                 $cur = $this->load();
-                if ($cur['gen'] !== $gen || $cur['released']) {
+                if ($cur['gen'] !== $gen) {
                     $this->lock->unlock();
                     return;
                 }

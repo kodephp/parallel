@@ -1,6 +1,6 @@
 # Kode/Parallel 调优指南
 
-> 版本：`v1.16.0` ｜ 目标：在「引擎无关、可移植、跨进程安全」的前提下，把吞吐与延迟推到合理上限。
+> 版本：`v1.17.0` ｜ 目标：在「引擎无关、可移植、跨进程安全」的前提下，把吞吐与延迟推到合理上限。
 > 配合 `docs/BENCHMARK.md`（实测数据）与 `docs/SWOOLE_COMPARISON.md`（同类对比）阅读。
 > **单线程 vs 多线程真实提速见 [BENCHMARK.md §单线程 vs 多线程](BENCHMARK.md)；跨线程/进程数据同步见 [CROSS_PROCESS.md](CROSS_PROCESS.md)。**
 

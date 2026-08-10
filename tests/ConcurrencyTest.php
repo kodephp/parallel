@@ -138,6 +138,42 @@ final class ConcurrencyTest extends TestCase
         }
     }
 
+    /**
+     * 常驻进程 × 同名字屏障 × 多轮：回归防护跨代误唤醒死锁。
+     *
+     * 旧实现以 `released` 标志作为放行信号，最后到达者先置 released=true（gen 未变）再解锁，
+     * 此刻新一轮首个参与者读到残留 released=true 会提前返回；该进程进入下一轮后，本轮其余
+     * 进程永远等不到第 N 个到达者而**死锁**。修复后仅以「代际递增(gen 变化)」放行，可杜绝。
+     *
+     * 本测试让 N 个常驻进程在【同一个命名屏障】上各 wait() R 轮，并用 Atomic 计数完成次数，
+     * 断言无死锁且总完成次数精确等于 N×R（无重复、无丢失）。
+     */
+    public function testNamedBarrierSustainedRoundsNoSpuriousWakeup(): void
+    {
+        $count = 4;
+        $rounds = 30;
+        $this->skipWithoutFork();
+
+        $name = 'ut_barrier_sustained_' . uniqid('', true);
+        $counterName = 'ut_barrier_cnt_' . uniqid('', true);
+
+        $pids = ForkRunner::run($count, static function () use ($count, $rounds, $name, $counterName) {
+            $barrier = Barrier::named($count, $name);
+            $counter = Atomic::named(0, $counterName);
+            for ($r = 0; $r < $rounds; $r++) {
+                $barrier->wait();
+                $counter->inc(); // 越过屏障后才计入「已完成一轮」
+            }
+            return true;
+        });
+
+        $this->assertCount($count, $pids);
+
+        $final = Atomic::named(0, $counterName)->get();
+        $expected = $count * $rounds;
+        $this->assertSame($expected, $final, "跨代误唤醒/死锁导致完成次数异常（期望 {$expected}，实际 {$final}）");
+    }
+
     public function testChannelSendRecv(): void
     {
         $ch = new Channel();
