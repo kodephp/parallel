@@ -4,7 +4,7 @@
 
 [![PHP Version](https://img.shields.io/badge/PHP-%3E%3D8.3-blue)](https://php.net)
 [![License](https://img.shields.io/badge/License-Apache--2.0-green)](LICENSE)
-[![Package Version](https://img.shields.io/badge/Version-1.13.0-orange)](composer.json)
+[![Package Version](https://img.shields.io/badge/Version-1.14.0-orange)](composer.json)
 [![Engines](https://img.shields.io/badge/Engines-parallel%20%7C%20sync%20%7C%20pluggable-purple)](docs/ENGINE.md)
 
 ## 目录
@@ -344,7 +344,7 @@ $ready = Futures::select([$f1, $f2, $f3], timeoutMs: 1000);
 | 维度 | **kode/parallel** | Swoole 6.2（Thread） | ext-parallel | pthreads |
 |------|-------------------|----------------------|--------------|----------|
 | 并行模型 | 真线程（ext-parallel）+ 可插拔外部进程后端 | 真线程（ZTS） | 真线程（ZTS） | 真线程（ZTS，已废弃） |
-| 批量合并派发 | ✅ `mapBatch`（短任务 22× 于逐条） | ❌ 需自行分片 | ❌ | ❌ |
+| 批量合并派发 | ✅ map/mapBatch（高频短任务自动批量合并） | ❌ 需自行分片 | ❌ | ❌ |
 | 逐元素容错 | ✅ `mapBatchSettled` | ⚠️ 自行 try/catch | ⚠️ | ❌ |
 | 统一 Future 契约 | ✅ `FutureInterface` | ❌ 线程对象 `join()` | 部分（`parallel\Future`） | ❌ |
 | 组合器 / select | ✅ all/settle/any/race/select | ❌ | ⚠️ 仅 `Events` | ❌ |
@@ -357,9 +357,9 @@ $ready = Futures::select([$f1, $f2, $f3], timeoutMs: 1000);
 > 且需禁用 pthreads；kode/parallel 的 `Concurrency\*` 原语在**普通非 ZTS PHP** 上即可运行，并天然**跨进程**共享状态——
 > 这是与 Swoole 线程（进程内共享内存）的根本差异。详见 [docs/SWOOLE_COMPARISON.md](docs/SWOOLE_COMPARISON.md)。
 
-**结论**：三者在 ZTS 下同为真线程，kode/parallel 的增量价值在于**上层工程能力**——批量合并派发
-（`mapBatch`，高频短任务 22× 于逐条）、逐元素容错（`mapBatchSettled`）、Future 组合子与 select、
-引擎无关且跨进程的同步原语，以及限并发 HTTP 扇出（`CurlMulti`，实测 8.9×）。
+**结论**：三者在 ZTS 下同为真线程，kode/parallel 的增量价值在于**上层工程能力**——自动批量合并派发
+（`map`/`mapBatch`，v1.14.0 起 `map` 自动批量，强制逐条 → 自动批量提速约 1.6×、相对 v1.13.0 逐条约 41×）、逐元素容错（`mapBatchSettled`）、
+Future 组合子与 select、引擎无关且跨进程的同步原语，以及限并发 HTTP 扇出（`CurlMulti`，并发 16~32 实测 10~15×）。
 
 ---
 
@@ -571,18 +571,24 @@ $runtime->run($consumer);
 
 ## 批量合并与使用场景
 
-### 高频短任务：用 `mapBatch` 而不是 `map`
+### 高频短任务：`map` 自动批量，或显式 `mapBatch`
 
-`map()` 逐条派发，每条都要序列化一次闭包与参数；`mapBatch()` 把一批元素合并为一次提交，
-**只序列化一次**。5 万条短消息实测：逐条 213k msg/s（比串行还慢），批量 1,655k msg/s。
+`map()` 逐条派发时每条都要序列化一次闭包与参数；从 v1.14.0 起，`map()` / `mapSettled()` 在
+**元素数 > 并发度 × 4** 时**自动走批量合并快速路径**——无需改 API 即获提速（trivial 综合约 39× 于 v1.13.0 逐条）。
+需要逐元素容错或显式调批大小时，用 `mapBatch()` / `mapBatchSettled()`。
+
+`mapBatch()` 把一批元素合并为一次提交，**只序列化一次**。v1.14.0 起 `map()` 在元素较多时自动走同一路径，
+无需改 API；可复现收益见 `bench_batch`：强制逐条 6.4M → 自动批量 10.3M ops/s（1.6×）。
+注意：**单条工作量 <1μs 的高频短任务并行≈串行**（派发/序列化开销与之同量级，倍率受调度抖动在 0.7~1.4× 波动），
+此时 `map()` 与 `mapBatch()` 表现一致、不会更慢，价值在于「不阻塞主流程」而非「更快」。
 
 ```php
 use Kode\Parallel\Pool\WorkerPool;
 
 $pool = new WorkerPool(11);                       // 线程数 ≈ CPU 核数
 
-// 批大小不传 = 自动推导（元素数 / 线程数 / 4，封顶 1024）
-$results = $pool->mapBatch($messages, static fn (array $m): string => render($m));
+// 直接 map() 即可，元素较多时内部自动批量合并；批大小 auto（元素数 / 线程数 / 4，封顶 1024）
+$results = $pool->map($messages, static fn (mixed $m): string => render($m));
 
 // 群发场景用容错版：单条失败不连累同批其他元素
 $settled = $pool->mapBatchSettled($recipients, static fn (array $u): string => send($u));
@@ -613,7 +619,7 @@ foreach ($users as $u) {
 $results = CurlMulti::fetch($urls, concurrency: 16, timeout: 30);
 ```
 
-纯等网络用 `CurlMulti`（实测 8.9×，内存最省）；**不限并发会比顺序还慢**（0.4×）。
+纯等网络用 `CurlMulti`（并发 16~32 实测 10~15×，内存最省）；**不限并发会比顺序还慢**（洪泛触发连接风暴，0.4×）。
 要「边请求边算」再用线程 `mapBatch`。
 
 ### 业务约束速查
@@ -631,35 +637,41 @@ $results = CurlMulti::fetch($urls, concurrency: 16, timeout: 30);
 
 ---
 
-## 性能压测（v1.13.0，ZTS + ext-parallel 真线程 主线，实测可复现于 PHP 8.3.33 / 11 核）
+## 性能压测（v1.14.0，ZTS + ext-parallel 真线程 主线，实测可复现于 PHP 8.3.33 / 11 核）
 
 ### 群发消息三档数据（`bench_message.php`，10 线程，批大小 auto）
 
-| 数据规模 | 条数 | 串行 | 逐条 `map` | **批量 `mapBatch`** | 4 进程 × 10 线程 |
-|---------|------|------|-----------|--------------------|-----------------|
-| 短 120B（推送通知） | 50,000 | 1,080,360 msg/s | 213,284（0.20×） | **1,655,145（1.53×）** | 1,209,158（1.12×） |
-| 中 4KB（站内信） | 20,000 | 125,026 msg/s | 174,400（1.39×） | **444,781（3.56×）** | 446,968（3.58×） |
-| 大 64KB（富文本邮件） | 2,000 | 8,025 msg/s | 46,445（5.79×） | **45,824（5.71×）** | 42,072（5.24×） |
+| 数据规模 | 条数 | 串行 | 逐条 `map`（自动批量） | **批量 `mapBatch`** | 4 进程 × 10 线程 |
+|---------|------|------|----------------------|--------------------|-----------------|
+| 短 120B（推送通知） | 50,000 | 1,070,000 msg/s | ≈1.0× * | **≈1.0× *** | 1,550,000（1.5×） |
+| 中 4KB（站内信） | 20,000 | 118,000 msg/s | 461,000（3.9×） | **473,000（4.0×）** | 500,000（4.2×） |
+| 大 64KB（富文本邮件） | 2,000 | 8,070 msg/s | 49,800（6.2×） | **51,600（6.4×）** | 38,000（4.7×） |
+
+> \* 短数据（单条 <1μs）并行开销与任务同量级，倍率受调度抖动在 0.7~1.4× 波动（多次运行 `map`/`mapBatch` 互相颠倒），
+> 并非稳定负优化；可复现的批量合并收益见 `bench_batch`（强制逐条 6.4M → 自动批量 10.3M，1.6×）。
 
 本机最优配置（`bench_tune.php` 网格扫描，串行基线取 3 轮最快）：
 
 | 负载 | 串行基线 | 单进程最优 | 进程 × 线程最优 |
 |------|---------|-----------|----------------|
-| 短 120B × 50,000 | 1,618,011 msg/s | 11 线程 + auto → 1,975,277（1.2×） | 4 进程 × 8 线程 → 2,300,871（1.4×） |
-| 中 4KB × 20,000 | 130,059 msg/s | **11 线程 + 批 128 → 644,390（5.0×）** | 8 进程 × 2 线程 → 564,734（4.3×） |
-| 大 64KB × 2,000 | 8,530 msg/s | **11 线程 + auto → 55,656（6.5×）** | 8 进程 × 2 线程 → 43,932（5.2×） |
+| 短 120B × 50,000 | 1,526,345 msg/s | 8 线程 + 批 512 → 1,839,865（1.2×） | 8 进程 × 2 线程 → 2,126,045（1.4×） |
+| 中 4KB × 20,000 | 118,492 msg/s | **11 线程 + 批 128 → 599,863（5.1×）** | 4 进程 × 4 线程 → 617,954（5.2×） |
+| 大 64KB × 2,000 | 8,078 msg/s | **22 线程 + 批 32 → 48,899（6.1×）** | 8 进程 × 2 线程 → 44,303（5.5×） |
 
 > **线程数 ≈ 核数即最优**；中/大数据下单进程多线程优于任何多进程组合（省掉 fork 与 IPC）。
 > 若已用 `kode/process` 起了 4 个进程，每进程再开 2~3 线程即可，**不要每进程再开 10 线程**。
 
-### 多用户 HTTP 扇出（`bench_curl.php`，200 请求 × 20ms 延迟）
+### 多用户 HTTP 扇出（`bench_curl.php` 自带本地并发服务，200 请求 × 20ms 延迟）
 
-| 方式 | 耗时 | 吞吐 | 相对顺序 |
+| 方式 | 耗时 | 吞吐 | 相对顺序理论下限（200×20ms=4000ms） |
 |------|------|------|---------|
-| 顺序 curl | 5415 ms | 37 req/s | 1.0× |
+| 顺序 curl | 5434 ms | 37 req/s | 1.4× |
 | `CurlMulti` 不限并发（一次 200 连接） | 10019 ms | 20 req/s | **0.4×（比顺序还慢）** |
-| **`CurlMulti` 并发 16** | **451 ms** | **444 req/s** | **8.9×** |
-| parallel 线程 × 8 + curl | 745 ms | 268 req/s | 5.4× |
+| `CurlMulti` 并发 16 | 395 ms | 506 req/s | 10.1× |
+| `CurlMulti` 并发 32 | 270 ms | 741 req/s | 14.8× |
+| parallel 线程 × 8 + curl | 776 ms | 258 req/s | 5.2× |
+
+> 最优并发档在 16~32 间波动（多次运行 x16≈10×、x32≈15× 会互相颠倒），经验值 8~32，上线前用 `bench_curl.php` 本机扫一遍取最优点。
 
 ### 单进程 vs 多线程 vs 多进程（同一份 CPU 任务，N=2000 独立单元，越高的 ops/s 越好）
 

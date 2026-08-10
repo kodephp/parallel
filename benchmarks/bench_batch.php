@@ -21,7 +21,7 @@ $engine = EngineFactory::detect();
 $cpus = (new \Kode\Parallel\Util\Sys())->cpuCount();
 
 echo "========================================\n";
-echo "    kode/parallel 批量合并自对比 (v1.13.0)\n";
+echo "    kode/parallel 批量合并自对比 (v1.14.0)\n";
 echo "    PHP {$php} | ZTS: {$zts} | engine: {$engine} | cpus: {$cpus}\n";
 echo "========================================\n\n";
 
@@ -107,22 +107,29 @@ foreach ($workloads as $wname => $def) {
         continue;
     }
 
-    $perTask = measure("  map     (逐条提交)", $N, static function () use ($N, $task, $concurrency) {
+    $perItem = measure("  mapBatch x1 (强制逐条)", $N, static function () use ($N, $task, $batchSize, $concurrency) {
+        $pool = new WorkerPool($concurrency);
+        $pool->mapBatch(range(0, $N - 1), static fn(int $i): int => $task($i), 1);
+        $pool->close();
+    });
+
+    $mapAuto = measure("  map      (自动批量)", $N, static function () use ($N, $task, $concurrency) {
         $pool = new WorkerPool($concurrency);
         $pool->map(range(0, $N - 1), static fn(int $i): int => $task($i));
         $pool->close();
     });
 
-    $batched = measure("  mapBatch (打包 x{$batchSize})", $N, static function () use ($N, $task, $batchSize, $concurrency) {
+    $batched = measure("  mapBatch  (显式 x{$batchSize})", $N, static function () use ($N, $task, $batchSize, $concurrency) {
         $pool = new WorkerPool($concurrency);
         $pool->mapBatch(range(0, $N - 1), static fn(int $i): int => $task($i), $batchSize);
         $pool->close();
     });
 
-    $factor = $perTask > 0 ? $batched / $perTask : 0;
-    printf("  >>> 批量 vs 逐条提速: %.1fx\n", $factor);
+    // map() 现在在元素较多时自动走批量合并；与「强制逐条」对比即可看出真实收益
+    $factor = $perItem > 0 ? $mapAuto / $perItem : 0;
+    printf("  >>> 自动批量(map) vs 强制逐条提速: %.1fx\n", $factor);
     if ($factor > 1.5) {
-        echo "  ✅ 批量合并显著降低序列化开销\n";
+        echo "  ✅ map() 自动批量合并显著降低序列化开销\n";
     } elseif ($factor >= 0.9) {
         echo "  ➖ 该负载下批量收益有限（任务越重、并行度越主导）\n";
     } else {

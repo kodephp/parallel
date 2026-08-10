@@ -80,6 +80,13 @@ final class CurlMulti
     {
         $key = $key ?? 'request_' . count($this->requests);
 
+        // 同一 key 重复添加：先释放旧句柄，避免 curl 句柄泄漏与状态错乱
+        if (isset($this->requests[$key])) {
+            $this->removeHandle($key);
+            curl_close($this->requests[$key]['handle']);
+            unset($this->requests[$key], $this->handleIndex[$key]);
+        }
+
         $ch = curl_init($url);
         if ($ch === false) {
             throw new ParallelException('无法初始化 curl');
@@ -181,6 +188,7 @@ final class CurlMulti
 
             if ($status !== CURLM_OK) {
                 $this->running = false;
+                $this->clear();
 
                 throw new ParallelException('curl_multi_exec 失败，code=' . $status);
             }
@@ -209,8 +217,21 @@ final class CurlMulti
             }
 
             // 刚补位的句柄需要先 exec 才会启动，跳过本轮等待
-            if (!$refilled && $active > 0 && curl_multi_select($this->multiHandle, 0.1) === -1) {
-                usleep(100);
+            if (!$refilled) {
+                if ($active === 0 && $next < $total) {
+                    // 仍有未派发请求却没有在途连接：说明 addHandle 失败导致调度死锁，
+                    // 不能在 $active==0 条件下空转烧 CPU，直接抛错交由调用方处理
+                    $this->running = false;
+                    $this->clear();
+
+                    throw new ParallelException(
+                        'CurlMulti 调度死锁：存在未派发请求但无在途连接（可能单个请求句柄加入失败）'
+                    );
+                }
+
+                if (curl_multi_select($this->multiHandle, 0.1) === -1) {
+                    usleep(1000);
+                }
             }
         } while ($active > 0 || $next < $total);
 
@@ -223,10 +244,10 @@ final class CurlMulti
                     'info' => ['url' => $request['url']],
                 ];
             }
-
-            $this->removeHandle($key);
         }
 
+        // 执行结束后关闭所有句柄并重置状态：既避免句柄泄漏，也支持同一实例反复 execute
+        $this->clear();
         $this->running = false;
 
         return $results;

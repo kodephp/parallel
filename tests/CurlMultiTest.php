@@ -109,4 +109,38 @@ final class CurlMultiTest extends TestCase
         self::assertNull($res['p']['error']);
         self::assertNotNull($res['p']['response']);
     }
+
+    public function testReAddingSameKeyOverwritesWithoutLeak(): void
+    {
+        // 重复 key 不能泄漏旧 curl 句柄，且请求计数保持为 1
+        $m = new CurlMulti();
+        $m->add('http://127.0.0.1:1/a', [], 'dup');
+        $m->add('http://127.0.0.1:1/b', [], 'dup');
+        $m->add('http://127.0.0.1:1/c', [], 'dup');
+
+        self::assertSame(1, $m->count());
+        $m->clear();
+        self::assertSame(0, $m->count());
+    }
+
+    public function testInstanceReuseAcrossExecutes(): void
+    {
+        // execute() 结束后必须关闭句柄并重置状态，才能安全复用同一实例多轮
+        $m = new CurlMulti();
+        $m->setConcurrency(4);
+        for ($i = 0; $i < 10; $i++) {
+            $m->get("http://127.0.0.1:{$this->port}/?delay=5", [], "a{$i}");
+        }
+        $r1 = $m->execute(30);
+        self::assertCount(10, $r1);
+
+        for ($i = 0; $i < 10; $i++) {
+            $m->get("http://127.0.0.1:{$this->port}/?delay=5", [], "b{$i}");
+        }
+        $r2 = $m->execute(30);
+        self::assertCount(10, $r2);
+        foreach ($r2 as $item) {
+            self::assertNull($item['error']);
+        }
+    }
 }

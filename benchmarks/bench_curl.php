@@ -18,18 +18,48 @@ use Kode\Parallel\Pool\WorkerPool;
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
-$base = getenv('BASE') ?: 'http://127.0.0.1:8899';
 $delay = (int) (getenv('DELAY') ?: 20);
 $N = (int) (getenv('N') ?: 200);
 $threads = (int) (getenv('THREADS') ?: 8);
 
+// 自带本地并发服务（每连接一线程，?delay= 模拟外部 API 延迟），保证 delay 真实生效、数据可复现
+$serverProc = null;
+$base = getenv('BASE');
+if ($base === '' || $base === false) {
+    $py = trim((string) @shell_exec('command -v python3'));
+    $script = __DIR__ . '/_http_server.py';
+    if ($py !== '' && is_file($script) && function_exists('proc_open')) {
+        $port = 8910 + (int) (getmypid() % 50);
+        $descr = [['pipe', 'r'], ['pipe', 'w'], ['pipe', 'w']];
+        $serverProc = proc_open(escapeshellarg($py) . ' ' . escapeshellarg($script) . " {$port} {$delay}", $descr, $pipes);
+        $ready = false;
+        for ($i = 0; $i < 50; $i++) {
+            $c = curl_init("http://127.0.0.1:{$port}/?delay=0");
+            curl_setopt_array($c, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 2, CURLOPT_CONNECTTIMEOUT => 1]);
+            $r = curl_exec($c);
+            curl_close($c);
+            if ($r !== false && str_contains((string) $r, 'ok')) {
+                $ready = true;
+                break;
+            }
+            usleep(100_000);
+        }
+        $base = $ready ? "http://127.0.0.1:{$port}" : null;
+    }
+}
+$base = $base ?: 'http://127.0.0.1:8899'; // 未自带服务时回退到外部 BASE
+
 echo "========================================\n";
-echo "    多用户 HTTP 扇出压测 (v1.13.0)\n";
+echo "    多用户 HTTP 扇出压测 (v1.14.0)\n";
 echo "    base={$base} delay={$delay}ms N={$N} threads={$threads}\n";
 echo "========================================\n\n";
 
 if (!extension_loaded('curl')) {
     echo "ext-curl 未安装，无法压测\n";
+    if ($serverProc !== null) {
+        @proc_terminate($serverProc);
+        @proc_close($serverProc);
+    }
     exit(1);
 }
 
@@ -108,3 +138,8 @@ printf(">>> curl_multi 最优并发x%d（推荐）: %.1fx\n", $best['c'], $seqMs
 printf(">>> 线程模式并发x%d:           %.1fx\n", $threads, $seqMs > 0 ? ($seqMs / 1000) * $rpsThread / $N : 0);
 echo "    结论: 纯 I/O 扇出用 curl_multi（单进程事件循环 + 限并发）最快最省；\n";
 echo "          线程模式适合「请求 + CPU 计算」整体并行，纯网络等待时反而因建连/序列化更慢。\n";
+
+if ($serverProc !== null) {
+    @proc_terminate($serverProc);
+    @proc_close($serverProc);
+}

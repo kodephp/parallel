@@ -91,6 +91,10 @@ final class WorkerPool
     /**
      * 并行映射：对每个元素执行 worker，按输入键序返回结果
      *
+     * 元素数量较大时（> 并发度 × {@see BATCHES_PER_THREAD}）自动走「批量合并」快速路径，
+     * 把多个元素打包为一次引擎提交，大幅降低 ext-parallel 的每任务序列化开销；
+     * 少量元素则保持逐条提交，避免分块本身的开销。两者失败语义一致：任一任务失败即抛出。
+     *
      * @param iterable<array-key, mixed> $items
      * @param callable $worker 签名为 fn(mixed $item, array-key $key): mixed
      * @return array<array-key, mixed>
@@ -98,6 +102,14 @@ final class WorkerPool
      */
     public function map(iterable $items, callable $worker): array
     {
+        $normalized = $this->normalize($items);
+
+        // 元素足够多时自动走批量合并快速路径；少量元素直接逐条，避免分块开销。
+        // 失败语义与逐条一致（任一失败即抛出）。
+        if (count($normalized) > $this->concurrency * self::BATCHES_PER_THREAD) {
+            return $this->mapBatch($normalized, $worker, self::AUTO_BATCH);
+        }
+
         $futures = $this->dispatch($items, $worker);
         $results = Futures::all($futures);
         $this->collect();
@@ -108,11 +120,19 @@ final class WorkerPool
     /**
      * 并行映射（不抛异常版）：返回每个元素的 fulfilled / rejected 状态
      *
+     * 元素数量较大时同样自动走「批量合并」快速路径（逐元素容错版），少量元素保持逐条。
+     *
      * @param iterable<array-key, mixed> $items
      * @return array<array-key, array{status: string, value?: mixed, reason?: \Throwable}>
      */
     public function mapSettled(iterable $items, callable $worker): array
     {
+        $normalized = $this->normalize($items);
+
+        if (count($normalized) > $this->concurrency * self::BATCHES_PER_THREAD) {
+            return $this->mapBatchSettled($normalized, $worker, self::AUTO_BATCH);
+        }
+
         $futures = $this->dispatch($items, $worker);
         $results = Futures::settle($futures);
         $this->collect();
@@ -176,6 +196,9 @@ final class WorkerPool
                 $out[$key] = $value;
             }
         }
+
+        // 回收已完成的批 future，避免其残留在 pending 中污染 stats/计数并累积内存
+        $this->collect();
 
         return $out;
     }

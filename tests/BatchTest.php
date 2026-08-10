@@ -87,4 +87,39 @@ final class BatchTest extends TestCase
 
         self::assertSame([], $out);
     }
+
+    public function testMapBatchRecyclesPendingFutures(): void
+    {
+        // 批 future 在 mapBatch 结束后必须回收，否则会残留在 pending 中：
+        // 污染 stats/计数，并让同一 pool 多次 mapBatch 时累积内存泄漏。
+        $items = range(0, 499);
+        $pool = new WorkerPool(8);
+        $out = $pool->mapBatch($items, static fn (int $v): int => $v * 2, 50);
+        $pool->close();
+
+        self::assertCount(500, $out);
+        self::assertSame(0, $pool->getPendingCount(), '批 future 应已回收，pending 不应残留');
+        self::assertGreaterThan(0, $pool->stats()['completed'], 'completed 统计应被更新');
+        self::assertSame(0, $pool->stats()['pending'], 'stats 中 pending 应与 getPendingCount 一致');
+    }
+
+    public function testMapBatchSettledRecyclesPendingFutures(): void
+    {
+        $items = range(0, 199);
+        $pool = new WorkerPool(8);
+        $res = $pool->mapBatchSettled(
+            $items,
+            static function (int $v): int {
+                if ($v % 7 === 0) {
+                    throw new \RuntimeException('boom');
+                }
+                return $v * 2;
+            },
+            20
+        );
+        $pool->close();
+
+        self::assertCount(200, $res);
+        self::assertSame(0, $pool->getPendingCount(), 'mapBatchSettled 也应回收 pending');
+    }
 }

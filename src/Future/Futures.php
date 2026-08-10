@@ -16,8 +16,11 @@ use Kode\Parallel\Exception\ParallelException;
  */
 final class Futures
 {
-    /** 轮询间隔（微秒） */
-    private const int POLL_INTERVAL_US = 500;
+    /** 轮询最小间隔（微秒）：短任务几乎立刻拿到结果，不必睡满一个长间隔 */
+    private const int MIN_POLL_US = 10;
+
+    /** 轮询最大间隔（微秒）：长任务下避免空转烧 CPU */
+    private const int MAX_POLL_US = 500;
 
     public const string STATUS_FULFILLED = 'fulfilled';
     public const string STATUS_REJECTED = 'rejected';
@@ -94,6 +97,7 @@ final class Futures
         $deadline = $timeoutMs > 0 ? hrtime(true) + ($timeoutMs * 1_000_000) : null;
         $pending = $list;
         $errors = [];
+        $sleep = self::MIN_POLL_US;
 
         while ($pending !== []) {
             foreach ($pending as $key => $future) {
@@ -123,7 +127,8 @@ final class Futures
                 throw new ParallelException('Futures::any() 等待超时', 0, null, ['errors' => $errors]);
             }
 
-            usleep(self::POLL_INTERVAL_US);
+            usleep($sleep);
+            $sleep = min($sleep * 2, self::MAX_POLL_US);
         }
 
         throw new ParallelException('全部任务均失败', 0, null, ['errors' => $errors]);
@@ -144,6 +149,7 @@ final class Futures
         }
 
         $deadline = $timeoutMs > 0 ? hrtime(true) + ($timeoutMs * 1_000_000) : null;
+        $sleep = self::MIN_POLL_US;
 
         while (true) {
             foreach ($list as $key => $future) {
@@ -189,6 +195,7 @@ final class Futures
         }
 
         $deadline = $timeoutMs > 0 ? hrtime(true) + ($timeoutMs * 1_000_000) : null;
+        $sleep = self::MIN_POLL_US;
 
         while (true) {
             foreach ($list as $future) {
@@ -205,7 +212,8 @@ final class Futures
                 return null;
             }
 
-            usleep(self::POLL_INTERVAL_US);
+            usleep($sleep);
+            $sleep = min($sleep * 2, self::MAX_POLL_US);
         }
     }
 
@@ -283,6 +291,7 @@ final class Futures
         }
 
         $deadline = $timeoutMs > 0 ? hrtime(true) + ($timeoutMs * 1_000_000) : null;
+        $sleep = self::MIN_POLL_US;
 
         while (true) {
             $pending = 0;
@@ -312,7 +321,8 @@ final class Futures
                 return;
             }
 
-            usleep(self::POLL_INTERVAL_US);
+            usleep($sleep);
+            $sleep = min($sleep * 2, self::MAX_POLL_US);
         }
     }
 

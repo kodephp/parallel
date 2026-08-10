@@ -195,6 +195,45 @@ final class WorkerPoolTest extends TestCase
         $pool->close();
     }
 
+    public function testMapAutoBatchesLargeInputWhilePreservingOrder(): void
+    {
+        // 元素数远超阈值时应自动走批量合并快速路径，但结果与顺序必须与逐条一致
+        $n = 2000;
+        $pool = new WorkerPool(8);
+        $out = $pool->map(range(0, $n - 1), static fn(int $v): int => $v * 3);
+        $pool->close();
+
+        $this->assertCount($n, $out);
+        $this->assertSame(0, $out[0]);
+        $this->assertSame(($n - 1) * 3, $out[$n - 1]);
+        $expected = [];
+        for ($i = 0; $i < $n; $i++) {
+            $expected[$i] = $i * 3;
+        }
+        $this->assertSame($expected, $out);
+    }
+
+    public function testMapSettledAutoBatchesLargeInput(): void
+    {
+        $n = 1500;
+        $pool = new WorkerPool(8);
+        $res = $pool->mapSettled(range(0, $n - 1), static function (int $v): int {
+            if ($v % 13 === 0) {
+                throw new \RuntimeException('boom');
+            }
+
+            return $v * 2;
+        });
+        $pool->close();
+
+        $this->assertCount($n, $res);
+        $this->assertSame(Futures::STATUS_FULFILLED, $res[1]['status']);
+        $this->assertSame(2, $res[1]['value']);
+        $this->assertSame(Futures::STATUS_REJECTED, $res[0]['status']);
+        $this->assertSame(Futures::STATUS_REJECTED, $res[13]['status']);
+        $this->assertSame(0, $pool->getPendingCount());
+    }
+
     private function skipWithoutParallelEngine(): void
     {
         if (!ParallelEngine::supported()) {

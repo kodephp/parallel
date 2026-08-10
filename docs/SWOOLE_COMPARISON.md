@@ -2,7 +2,7 @@
 
 > 对标版本：Swoole **6.2.2**（2026-07-08，6.x 系列最新稳定版）。
 > 测试环境版本：Swoole 6.0 起引入原生线程（`Swoole\Thread` 系列），6.2.x 进一步加入 io_uring HTTP、协程 FTP/SSH、PHP 8.5 支持等。
-> kode 侧版本：`v1.13.0` ｜ kode 栈：`kode/context 3.1.0` / `kode/facade 3.2.0` / `kode/fibers 4.5.0`（均为当前各包最新版）。
+> kode 侧版本：`v1.14.0` ｜ kode 栈：`kode/context 3.1.0` / `kode/facade 3.2.0` / `kode/fibers 4.5.0`（均为当前各包最新版）。
 > 同类对比基准（四角基线，同口径）：`bench_concurrency.php`（kode）｜`bench_swoole.php`（Swoole 6.2 线程，需 ZTS）｜`bench_ext_parallel.php`（ext-parallel 真线程，需 ZTS）｜`bench_pcntl.php`（裸 pcntl 地板，普通 PHP）。
 
 ## 核心结论（先讲重点）
@@ -65,7 +65,7 @@ Swoole 6 则始终是「同一进程内的多线程 + 协程」，没有这种�
 
 ## 性能对比（实测 vs 官方能力）
 
-### kode/parallel 实测（本仓库 `benchmarks/bench_concurrency.php` / `bench_compare.php`，ZTS + ext-parallel 真线程主线，v1.13.0）
+### kode/parallel 实测（本仓库 `benchmarks/bench_concurrency.php` / `bench_compare.php`，ZTS + ext-parallel 真线程主线，v1.14.0）
 
 | 测试项 | 数值 | 说明 |
 |--------|------|------|
