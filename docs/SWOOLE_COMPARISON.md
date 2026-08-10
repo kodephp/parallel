@@ -2,7 +2,7 @@
 
 > 对标版本：Swoole **6.2.2**（2026-07-08，6.x 系列最新稳定版）。
 > 测试环境版本：Swoole 6.0 起引入原生线程（`Swoole\Thread` 系列），6.2.x 进一步加入 io_uring HTTP、协程 FTP/SSH、PHP 8.5 支持等。
-> kode 侧版本：`v1.10.0` ｜ kode 栈：`kode/context 3.1.0` / `kode/facade 3.2.0` / `kode/fibers 4.5.0`（均为当前各包最新版）。
+> kode 侧版本：`v1.11.0` ｜ kode 栈：`kode/context 3.1.0` / `kode/facade 3.2.0` / `kode/fibers 4.5.0`（均为当前各包最新版）。
 > 同类对比基准（四角基线，同口径）：`bench_concurrency.php`（kode）｜`bench_swoole.php`（Swoole 6.2 线程，需 ZTS）｜`bench_ext_parallel.php`（ext-parallel 真线程，需 ZTS）｜`bench_pcntl.php`（裸 pcntl 地板，普通 PHP）。
 
 ## 核心结论（先讲重点）
@@ -11,7 +11,6 @@
 |------|------------------------------|-----------------|
 | **运行前提** | stock PHP CLI（**非 ZTS** 即可） | **必须 ZTS 构建 + `--enable-swoole-thread`** 编译；且需禁用 pthreads |
 | **跨进程共享** | ✅ `Lock`/`Atomic`/`Barrier` 基于文件锁，**天然跨进程** | ❌ `Thread\*` 是**同进程内线程共享内存** |
-| **跨机器** | ✅ 内置 Cluster | ❌ 不支持 |
 | **真线程可用** | ✅ 装了 `ext-parallel`（ZTS）时自动用真线程 | ✅ 原生线程 |
 | **性能（同进程高频）** | 中（文件 I/O 兜底，保证可移植） | 高（线程共享内存，in-process） |
 | **可移植性** | ✅ 任意 PHP 8.3+ CLI | ⚠️ 需重新编译 PHP + Swoole |
@@ -95,7 +94,6 @@ Swoole 6 则始终是「同一进程内的多线程 + 协程」，没有这种�
 | 部署环境只是普通 PHP（非 ZTS） | **kode/parallel** | Swoole 线程根本不可用 |
 | 需要跨进程 / 跨机器共享状态 | **kode/parallel** | Swoole 线程是进程内共享内存 |
 | 已部署 ZTS + Swoole 6 且要极致同进程吞吐 | **Swoole 6 线程** | 共享内存更省、更快 |
-| 需要分布式集群 | **kode/parallel** | 内置 Cluster，Swoole 无 |
 | 追求「一套代码多环境可跑」 | **kode/parallel** | 引擎自动降级 |
 
 ---

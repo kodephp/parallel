@@ -1,40 +1,56 @@
 # Kode/Parallel 性能基准报告
 
-> 版本：`v1.10.0` ｜ kode 栈：`kode/context 3.1.0` / `kode/facade 3.2.0` / `kode/fibers 4.5.0`
-> 本次新增：**`Concurrency\Semaphore` 计数信号量原语**（进程内 ~7.8M ops/s）、非阻塞 `Lock::withLockTimeout` / `Atomic::tryAdd`/`trySub`、
-> 以及两类「同类对比」基线 `benchmarks/bench_pcntl.php`（裸 pcntl 地板）与 `benchmarks/bench_ext_parallel.php`（ext-parallel 真线程）。
+> 版本：`v1.11.0` ｜ kode 栈：`kode/context 3.1.0` / `kode/facade 3.2.0` / `kode/fibers 4.5.0`
+> 本次重点：**已移除无测试/设计有误的 `Cluster`/`Network` 分布式子系统**，并以 **ZTS + ext-parallel 真线程引擎** 作为压测主线；
+> 引擎无关同步原语在 ZTS 与普通 PHP 下表现一致，下方数据均为真实运行结果（非估算）。
 
 ## 测试环境（本仓库实测，可复现）
 
-| 项目 | 配置 |
-|------|------|
-| PHP 版本 | 8.3.31（**ZTS: NO**，普通 stock PHP） |
-| ext-parallel | 未加载 |
-| ext-pcntl | LOADED |
-| ext-sockets | LOADED |
-| 默认引擎 | `process`（多进程 / `pcntl_fork`） |
-| 操作系统 | macOS（Apple Silicon） |
-| 运行方式 | `php benchmarks/bench_concurrency.php` |
-| 测试日期 | 2026-08-06 |
+| 项目 | ZTS 主线配置 | 普通 PHP 回退配置 |
+|------|--------------|-------------------|
+| PHP 版本 | 8.3.33（**ZTS: YES**） | 8.3.33（**ZTS: NO**） |
+| ext-parallel | LOADED | 未加载 |
+| ext-pcntl | LOADED | LOADED |
+| 默认引擎 | `parallel`（ext-parallel 真线程） | `process`（pcntl_fork 多进程） |
+| 操作系统 | macOS（Apple Silicon） | macOS（Apple Silicon） |
+| 运行方式 | `php benchmarks/bench_concurrency.php` | 同左 |
+| 测试日期 | 2026-08-10 | 2026-08-10 |
 
-> 说明：本环境没有 ZTS / ext-parallel，因此走的是**引擎无关**路径——这也正是 kode/parallel 的核心卖点：
-> 在**普通非 ZTS PHP** 上即可运行并行与同步原语。下方所有数据均为该路径真实结果（非估算）。
-> 注：fork 类基准（扇出 / WorkerPool）数值随机器负载波动较大，取多次运行代表值。
+> 说明：kode/parallel 自动探测引擎——装了 ext-parallel 的 ZTS PHP 走真线程，否则走 pcntl 多进程或同步回退。
+> 引擎无关原语（Channel/Lock/Atomic/Barrier/Semaphore）在多引擎下语义与表现一致。`fork` 类扇出数值随机器负载轻微波动，取多次运行代表值。
 
-## 实测结果（stock PHP，非 ZTS，v1.10.0）
+## 实测结果（ZTS + ext-parallel 真线程，v1.11.0）
 
 | 测试项 | 吞吐（代表值） |
 |--------|----------------|
-| 进程引擎任务扇出（submit+get ×200，空任务） | ≈ 1.1k–2.9k ops/s |
-| 并行映射（parallel_map ×100，轻量计算） | ≈ 1.3k–2.9k ops/s |
-| `WorkerPool.map`（×200，并发 8） | ≈ 0.9k–2.6k ops/s |
-| `Futures::all`（聚合 ×200 个 Future） | ≈ 1.3k–3.1k ops/s |
-| `Concurrency\Channel`（send+recv ×200k，进程内） | ≈ 11–17M ops/s |
+| **parallel 引擎任务扇出（submit+get ×200，空任务）** | **≈ 18万–30万 ops/s** |
+| 并行映射（parallel_map ×100，轻量计算） | ≈ 1.8万–2.0万 ops/s |
+| `WorkerPool.map`（×200，并发 8） | ≈ 3.7万–8.0万 ops/s |
+| `Futures::all`（聚合 ×200 个 Future） | ≈ 2.3k ops/s |
+| `Concurrency\Channel`（send+recv ×200k，进程内） | ≈ 13–18M ops/s |
+| `Concurrency\Lock`（withLock 自增 ×20k） | ≈ 96k–109k ops/s |
+| `Concurrency\Atomic`（进程内 inc ×5M，纯内存快路径） | ≈ 13–17M ops/s |
+| `Concurrency\Atomic`（跨进程 inc ×30k，6 进程争用） | ≈ 17k ops/s，最终值 30,000 ✅ 零丢失 |
+| `Concurrency\Barrier`（跨进程 4 方 ×50 回合） | ≈ 340–374 回合/s |
+| `Concurrency\Semaphore`（进程内 acquire+release ×5M） | ≈ 7.3M ops/s |
+
+## 实测结果（普通 PHP，pcntl 多进程回退，v1.11.0）
+
+| 测试项 | 吞吐（代表值） |
+|--------|----------------|
+| process 引擎任务扇出（submit+get ×200，空任务） | ≈ 2.0k–2.6k ops/s |
+| 并行映射（parallel_map ×100，轻量计算） | ≈ 2.5k ops/s |
+| `WorkerPool.map`（×200，并发 8） | ≈ 1.9k–2.4k ops/s |
+| `Futures::all`（聚合 ×200 个 Future） | ≈ 2.4k ops/s |
+| `Concurrency\Channel`（send+recv ×200k，进程内） | ≈ 11–35M ops/s |
 | `Concurrency\Lock`（withLock 自增 ×20k） | ≈ 58k–109k ops/s |
-| **`Concurrency\Atomic`（进程内 inc ×5M，纯内存快路径）** | **≈ 15–17M ops/s** |
-| `Concurrency\Atomic`（跨进程 inc ×30k，6 进程争用） | ≈ 17k–20k ops/s，最终值 30,000 ✅ 零丢失 |
+| `Concurrency\Atomic`（进程内 inc ×5M，纯内存快路径） | ≈ 15–34M ops/s |
+| `Concurrency\Atomic`（跨进程 inc ×30k，6 进程争用） | ≈ 17k ops/s，最终值 30,000 ✅ 零丢失 |
 | `Concurrency\Barrier`（跨进程 4 方 ×50 回合） | ≈ 275–372 回合/s |
-| **`Concurrency\Semaphore`（进程内 acquire+release ×5M）** | **≈ 7.6–7.8M ops/s** |
+| `Concurrency\Semaphore`（进程内 acquire+release ×5M） | ≈ 7.6–16.4M ops/s |
+
+> **真线程 vs 多进程**：parallel 引擎的任务派发（submit+get）比 process 引擎快约 **2 个数量级**（~20万 vs ~2.2k ops/s），
+> 因为真线程免去了 `fork` 与 IPC 重建开销；进程内原子/信号量在 ZTS 下因线程安全簿记略低于 NTS，但跨进程原语两者一致。
 
 ## v1.9.0 关键优化：未命名 `Atomic` 进程内纯内存快路径
 
@@ -76,19 +92,19 @@ $db->withPermits(1, fn () => query());  // 至多 8 个并发
 > 四个脚本同口径（均为「派发 N 个任务并回收结果」），可并排比较：
 > `bench_concurrency.php`（kode）｜`bench_swoole.php`（Swoole 6.2 线程）｜`bench_ext_parallel.php`（ext-parallel 真线程）｜`bench_pcntl.php`（裸 pcntl 地板）。
 
-| 测试项 | kode（非 ZTS） | 裸 pcntl（非 ZTS） | ext-parallel（ZTS） | Swoole 6（ZTS） |
-|--------|---------------|-------------------|---------------------|-----------------|
-| 运行前提 | 普通 PHP | 普通 PHP | **必须 ZTS** | **必须 ZTS** |
-| 任务派发 submit/run+get | ≈ 2.9k ops/s | ≈ 3.5k ops/s | 更高（真线程） | 更高（真线程） |
-| 进程内原子 inc | ≈ 16.6M ops/s | — | 更高（共享内存） | 更高（共享内存） |
-| 跨进程共享状态 | ✅ 原生 | ❌ | ❌（线程内） | ❌（线程内） | 
-| 跨机器 | ✅ Cluster | ❌ | ❌ | ❌ |
+| 测试项 | kode（ZTS 真线程） | kode（普通 PHP 多进程） | 裸 pcntl | ext-parallel | Swoole 6 |
+|--------|-------------------|------------------------|----------|--------------|----------|
+| 运行前提 | ZTS + ext-parallel | 普通 PHP | 普通 PHP | **必须 ZTS** | **必须 ZTS** |
+| 任务派发 submit/run+get | ≈ 20万 ops/s | ≈ 2.2k ops/s | ≈ 2.6k ops/s | 更高（真线程） | 更高（真线程） |
+| 进程内原子 inc | ≈ 13–17M ops/s | ≈ 15–34M ops/s | — | 更高（共享内存） | 更高（共享内存） |
+| 跨进程共享状态 | ✅ 原生 | ✅ 原生 | ❌ | ❌（线程内） | ❌（线程内） |
 
 **关键结论**：
-- **kode 进程引擎 ≈ 裸 pcntl 地板 + 16% 封装开销**：说明 kode 在 fork 之上几乎零额外成本，
+- **kode 进程引擎 ≈ 裸 pcntl 地板 + 约 16% 封装开销**：说明 kode 在 fork 之上几乎零额外成本，
   其价值在 Future 组合子、引擎自动降级、以及 `Lock`/`Atomic`/`Barrier`/`Semaphore` 的跨进程能力。
+- **kode 真线程引擎（ZTS）远超多进程**：任务派发快约 2 个数量级，适合高频率细粒度并行。
 - **与 Swoole 6 / ext-parallel 的差异在 ZTS 门槛**：后两者同进程内吞吐更高（共享内存），但强制 ZTS 构建；
-  kode 以「文件锁兜底」换得**任意普通 PHP 即可运行 + 跨进程/跨机器**，适用面更广。
+  kode 以「文件锁兜底」换得**任意普通 PHP 即可运行 + 跨进程共享**，适用面更广。
 
 ## 调优点（历次验证确认并修复）
 
@@ -105,7 +121,7 @@ $db->withPermits(1, fn () => query());  // 至多 8 个并发
 ## 复现
 
 ```bash
-php benchmarks/bench_concurrency.php     # kode 引擎无关原语（普通 PHP 即可）
+php benchmarks/bench_concurrency.php     # kode 引擎无关原语（自动探测：ZTS 走真线程，否则多进程）
 php benchmarks/bench_pcntl.php           # 裸 pcntl_fork 地板（普通 PHP 即可）
 php benchmarks/bench_swoole.php          # Swoole 6.2 线程（需 ZTS + --enable-swoole-thread）
 php benchmarks/bench_ext_parallel.php    # ext-parallel 真线程（需 ZTS + ext-parallel）

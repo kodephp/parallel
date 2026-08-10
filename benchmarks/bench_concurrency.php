@@ -2,9 +2,9 @@
 /**
  * kode/parallel 引擎无关原语 + 多引擎 实测基准
  *
- * 运行环境: 普通 PHP CLI（非 ZTS，无 ext-parallel）
+ * 运行环境: PHP CLI（自动探测引擎——ZTS + ext-parallel 走真线程，否则 pcntl 多进程 / 同步回退）
  * 目的: 在“对标 Swoole 6.2 最新版”的语境下，给出 kode/parallel 真实可复现的吞吐数据，
- *       证明引擎无关同步原语在 stock PHP 上即可工作（Swoole 原生线程必须 ZTS + --enable-swoole-thread）。
+ *       引擎无关同步原语在普通 PHP 与 ZTS PHP 上均可工作（Swoole 原生线程必须 ZTS + --enable-swoole-thread）。
  *
  * 用法: php benchmarks/bench_concurrency.php
  * 同类对比: php benchmarks/bench_swoole.php   （需 ZTS + Swoole 6 线程构建）
@@ -59,12 +59,13 @@ function bench(string $label, int $ops, callable $fn): float
 }
 
 // ---------------------------------------------------------------------------
-// 1) 进程引擎任务扇出吞吐（fork + 执行 + 取结果）
+// 1) 多引擎任务扇出吞吐（自动探测：ZTS 用 parallel 真线程，否则 process 多进程）
 // ---------------------------------------------------------------------------
-echo "【1】进程引擎任务扇出（fork 模型）\n";
+$engine = EngineFactory::detect();
+echo "【1】{$engine} 引擎任务扇出（" . ($engine === 'parallel' ? 'ext-parallel 真线程' : ($engine === 'process' ? 'pcntl fork 多进程' : '同步回退')) . "）\n";
 $count = 200;
-$rt = new Runtime(null, 'process');
-$rows['进程引擎 submit+get (空任务)'] = bench("  submit+get x$count", $count, function () use ($rt, $count) {
+$rt = new Runtime(null, $engine);
+$rows["{$engine} 引擎 submit+get (空任务)"] = bench("  submit+get x$count", $count, function () use ($rt, $count) {
     $futs = [];
     for ($i = 0; $i < $count; $i++) {
         $futs[] = $rt->run(static fn() => 1);
@@ -77,7 +78,7 @@ $rt->close();
 
 // CPU 密集型并行加速
 $count = 100;
-$rt = new Runtime(null, 'process');
+$rt = new Runtime(null, $engine);
 $rows['并行映射 parallel_map (轻量计算)'] = bench("  parallel_map x$count", $count, function () use ($rt, $count) {
     $futs = [];
     for ($i = 0; $i < $count; $i++) {
@@ -101,7 +102,7 @@ $rt->close();
 // ---------------------------------------------------------------------------
 echo "\n【2】WorkerPool 工作池（并发 8）\n";
 $count = 200;
-$pool = new WorkerPool(concurrency: 8, engine: 'process');
+$pool = new WorkerPool(concurrency: 8, engine: $engine);
 $rows['WorkerPool.map x' . $count] = bench("  map x$count (平方)", $count, function () use ($pool, $count) {
     $pool->map(range(1, $count), static fn(int $n): int => $n * $n);
 });
@@ -251,7 +252,9 @@ echo "============================================\n";
 foreach ($rows as $label => $ops) {
     printf("  %-40s %14s ops/s\n", $label, number_format($ops, 0));
 }
-echo "\n  说明: 以上为 stock PHP（非 ZTS）实测；\n";
+echo "\n  说明: 以上实测于 PHP " . PHP_VERSION . "（ZTS: " . (defined('ZEND_THREAD_SAFE') && ZEND_THREAD_SAFE ? 'YES' : 'NO') .
+    "），主引擎: {$engine}；\n";
+echo "  引擎无关原语（Channel/Lock/Atomic/Barrier/Semaphore）在多引擎下表现一致。\n";
 echo "  Swoole 6.2 原生线程需 ZTS + --enable-swoole-thread 方能运行。\n";
 echo "  同类对比请在本机 ZTS + Swoole 线程构建上运行: php benchmarks/bench_swoole.php\n";
 echo "============================================\n";

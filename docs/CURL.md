@@ -439,12 +439,12 @@ require_once __DIR__ . '/vendor/autoload.php';
 
 use Kode\Parallel\Curl\CurlMulti;
 use Kode\Parallel\Runtime\Runtime;
-use Kode\Parallel\Channel\Channel;
+use Kode\Parallel\Concurrency\Channel;
 
 function parallelApiCalls(array $urls): array
 {
     $runtime = new Runtime();
-    $resultChannel = Channel::make('api_results');
+    $resultChannel = Channel::make();
 
     // 在 Runtime 中执行 HTTP 请求
     $task = function() use ($urls, $resultChannel) {

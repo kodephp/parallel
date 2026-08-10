@@ -705,7 +705,7 @@ if (!$manager->wait('long_task', 5000)) {
 <?php
 use Kode\Parallel\Runtime\Runtime;
 use Kode\Parallel\Fiber\FiberManager;
-use Kode\Parallel\Channel\Channel;
+use Kode\Parallel\Concurrency\Channel;
 
 $runtime = new Runtime();
 $manager = new FiberManager();

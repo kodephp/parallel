@@ -29,6 +29,8 @@ final class Runtime
     private readonly ?string $bootstrap;
     private bool $running = false;
     private int $taskCount = 0;
+    /** @var array<int, FutureInterface> 已提交但尚未回收的 Future */
+    private array $pending = [];
 
     /**
      * @param string|null $bootstrap 引导文件路径
@@ -66,16 +68,11 @@ final class Runtime
             ? $task->getClosure()
             : \Closure::fromCallable($task);
 
-        $this->running = true;
+        $future = $this->engine->submit($closure, $args);
+        $this->taskCount++;
+        $this->pending[spl_object_id($future)] = $future;
 
-        try {
-            $future = $this->engine->submit($closure, $args);
-            $this->taskCount++;
-
-            return $future;
-        } finally {
-            $this->running = false;
-        }
+        return $future;
     }
 
     /**
@@ -113,10 +110,19 @@ final class Runtime
     }
 
     /**
-     * 是否正在提交任务
+     * 是否还有已提交但尚未回收（get/wait）的任务在运行
+     *
+     * 通过跟踪待处理 Future 的真实完成状态得出，跨所有引擎一致。
      */
     public function isRunning(): bool
     {
+        foreach ($this->pending as $id => $future) {
+            if ($future->done()) {
+                unset($this->pending[$id]);
+            }
+        }
+
+        $this->running = $this->pending !== [];
         return $this->running;
     }
 
@@ -144,6 +150,7 @@ final class Runtime
         $this->engine?->close();
         $this->engine = null;
         $this->running = false;
+        $this->pending = [];
     }
 
     /**

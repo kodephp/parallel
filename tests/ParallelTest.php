@@ -8,8 +8,6 @@ use PHPUnit\Framework\TestCase;
 use Kode\Parallel\Runtime\Runtime;
 use Kode\Parallel\Task\Task;
 use Kode\Parallel\Future\Future;
-use Kode\Parallel\Channel\Channel;
-use Kode\Parallel\Events\Events;
 use Kode\Parallel\Exception\ParallelException;
 
 class ParallelTest extends TestCase
@@ -39,6 +37,7 @@ class ParallelTest extends TestCase
         $runtime = new Runtime();
         $this->assertInstanceOf(Runtime::class, $runtime);
         $this->assertFalse($runtime->isRunning());
+        $this->assertNull($runtime->getBootstrap());
         $runtime->close();
     }
 
@@ -52,8 +51,8 @@ class ParallelTest extends TestCase
     public function testSimpleTaskExecution(): void
     {
         $future = $this->runtime->run(fn() => 42);
-        $this->assertTrue($future->done());
         $this->assertEquals(42, $future->get());
+        $this->assertTrue($future->done());
     }
 
     public function testTaskWithArguments(): void
@@ -63,8 +62,8 @@ class ParallelTest extends TestCase
             ['a' => 10, 'b' => 20]
         );
 
-        $this->assertTrue($future->done());
         $this->assertEquals(30, $future->get());
+        $this->assertTrue($future->done());
     }
 
     public function testTaskWithArrayOperations(): void
@@ -120,7 +119,9 @@ class ParallelTest extends TestCase
     {
         $future = $this->runtime->run(fn() => 42);
 
-        $this->assertNull($future->getOrNull());
+        // 任务可能尚未完成：等待完成后再读取
+        $future->wait(1000);
+        $this->assertNotNull($future->getOrNull());
         $this->assertEquals(42, $future->get());
         $this->assertEquals(42, $future->getOrNull());
     }
@@ -154,8 +155,9 @@ class ParallelTest extends TestCase
         $this->expectException(ParallelException::class);
         $this->expectExceptionMessage('yield');
 
-        $code = 'return function() { yield 1; };';
-        $taskClosure = eval($code);
+        $taskClosure = static function () {
+            yield 1;
+        };
         new Task($taskClosure);
     }
 
@@ -164,104 +166,12 @@ class ParallelTest extends TestCase
         $this->expectException(ParallelException::class);
         $this->expectExceptionMessage('引用');
 
-        $code = 'return function() use (&$ref) { return $ref; };';
+        // 内联可读闭包（源码可扫描），引用捕获会被 Task 校验拦截
         $ref = 1;
-        $taskClosure = eval($code);
+        $taskClosure = function () use (&$ref) {
+            return $ref;
+        };
         new Task($taskClosure);
-    }
-
-    public function testChannelMake(): void
-    {
-        $channel = Channel::make('test_channel');
-        $this->assertInstanceOf(Channel::class, $channel);
-        $this->assertEquals('test_channel', $channel->getName());
-        $this->assertEquals(Channel::CAPACITY_UNBOUNDED, $channel->getCapacity());
-    }
-
-    public function testChannelBounded(): void
-    {
-        $channel = Channel::bounded(5, 'bounded_channel');
-        $this->assertEquals(5, $channel->getCapacity());
-        $this->assertEquals('bounded_channel', $channel->getName());
-    }
-
-    public function testChannelBoundedInvalidCapacity(): void
-    {
-        $this->expectException(ParallelException::class);
-        Channel::bounded(0);
-    }
-
-    public function testChannelSendRecv(): void
-    {
-        $channel = Channel::make();
-
-        $sendFuture = $this->runtime->run(fn($args) => $args['channel']->send('hello'), ['channel' => $channel]);
-        $sendFuture->wait();
-
-        $this->assertFalse($channel->isEmpty());
-
-        $recvFuture = $this->runtime->run(fn($args) => $args['channel']->recv(), ['channel' => $channel]);
-        $this->assertEquals('hello', $recvFuture->get());
-    }
-
-    public function testChannelClose(): void
-    {
-        $channel = Channel::bounded(1);
-        $channel->send('data');
-        $channel->close();
-
-        $this->assertFalse($channel->isEmpty());
-    }
-
-    public function testEventsCreation(): void
-    {
-        $events = new Events();
-        $this->assertCount(0, $events);
-    }
-
-    public function testEventsAttachFuture(): void
-    {
-        $events = new Events();
-        $future = $this->runtime->run(fn() => 42);
-
-        $events->attachFuture('test_future', $future);
-        $this->assertCount(1, $events);
-        $this->assertTrue($events->has('test_future'));
-    }
-
-    public function testEventsAttachChannel(): void
-    {
-        $events = new Events();
-        $channel = Channel::make('events_channel');
-
-        $events->attachChannel('test_channel', $channel);
-        $this->assertTrue($events->has('test_channel'));
-    }
-
-    public function testEventsCancel(): void
-    {
-        $events = new Events();
-        $channel = Channel::make();
-
-        $events->attachChannel('cancel_test', $channel);
-        $this->assertCount(1, $events);
-
-        $events->cancel('cancel_test');
-        $this->assertFalse($events->has('cancel_test'));
-    }
-
-    public function testEventsClear(): void
-    {
-        $events = new Events();
-        $channel1 = Channel::make('ch1');
-        $channel2 = Channel::make('ch2');
-
-        $events->attachChannel('ch1', $channel1);
-        $events->attachChannel('ch2', $channel2);
-        $this->assertCount(2, $events);
-
-        $events->clear();
-        $this->assertCount(0, $events);
     }
 
     public function testFutureGetId(): void
@@ -278,10 +188,12 @@ class ParallelTest extends TestCase
         $runtime = new Runtime();
         $this->assertFalse($runtime->isRunning());
 
+        // isRunning 反映「已提交任务且尚未全部回收」的状态
         $future = $runtime->run(fn() => usleep(10000) . 'running');
         $this->assertTrue($runtime->isRunning());
 
         $future->wait();
+        $this->assertFalse($runtime->isRunning());
         $runtime->close();
     }
 
@@ -331,5 +243,34 @@ class ParallelTest extends TestCase
         foreach ($futures as $future) {
             $this->assertTrue($future->wait(5000));
         }
+    }
+
+    public function testParallelSum(): void
+    {
+        $futures = [];
+        $chunkSize = 100000;
+
+        for ($i = 0; $i < 4; $i++) {
+            $start = $i * $chunkSize + 1;
+            $end = ($i + 1) * $chunkSize;
+            $futures[] = $this->runtime->run(
+                fn($args) => array_sum(range($args['start'], $args['end'])),
+                ['start' => $start, 'end' => $end]
+            );
+        }
+
+        $total = 0;
+        foreach ($futures as $future) {
+            $total += $future->get();
+        }
+
+        $expected = array_sum(range(1, 400000));
+        $this->assertEquals($expected, $total);
+    }
+
+    public function testTaskFromFileNotExists(): void
+    {
+        $this->expectException(ParallelException::class);
+        Task::fromFile('/nonexistent/file.php');
     }
 }

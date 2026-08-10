@@ -205,7 +205,20 @@ final class ProcessFuture implements FutureInterface
             return;
         }
 
+        // 本地可信 IPC：数据来自本进程 fork 出的子进程（UNIX socket pair），非网络输入。
+        // 允许反序列化为任意类型以便子进程返回用户对象；仅在校验信封结构后使用。
         $payload = @unserialize($this->buffer, ['allowed_classes' => true]);
+
+        if ($payload === false && $this->buffer !== serialize(false)) {
+            $this->error = new ParallelException(
+                '子进程返回数据反序列化失败（可能数据损坏）',
+                0,
+                null,
+                ['pid' => $this->pid, 'bytes' => strlen($this->buffer)]
+            );
+
+            return;
+        }
 
         if (!is_array($payload) || !array_key_exists('ok', $payload)) {
             $this->error = new ParallelException(

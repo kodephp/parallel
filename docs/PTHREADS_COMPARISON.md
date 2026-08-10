@@ -124,11 +124,11 @@ echo "Counter: {$shared->counter}\n"; // 可能不是 5（竞态条件）
 ```php
 // kode/parallel - 使用 Channel
 use Kode\Parallel\Runtime\Runtime;
-use Kode\Parallel\Channel\Channel;
+use Kode\Parallel\Concurrency\Channel;
 
 $runtime = new Runtime();
-$counter = Channel::make('counter');
-$items = Channel::make('items');
+$counter = Channel::make();
+$items = Channel::make();
 
 $worker = function() use ($counter, $items) {
     // Channel 自动同步，无需担心竞态条件
@@ -192,10 +192,10 @@ $worker->join();
 ```php
 // kode/parallel - 使用 Channel 传递资源
 use Kode\Parallel\Runtime\Runtime;
-use Kode\Parallel\Channel\Channel;
+use Kode\Parallel\Concurrency\Channel;
 
 $runtime = new Runtime();
-$dbChannel = Channel::make('db');
+$dbChannel = Channel::make();
 
 // 主线程创建连接
 $pdo = new PDO('mysql:host=localhost', 'user', 'pass');
@@ -246,15 +246,15 @@ class SyncWorker extends Thread {
 }
 ```
 
-### kode/parallel 同步（Sync 原语）
+### kode/parallel 同步（Concurrency 引擎无关原语）
 
 ```php
-// kode/parallel - Mutex/Semaphore
+// kode/parallel - Lock/Semaphore（无需 ZTS / ext-parallel，对标 pthreads 同步）
 use Kode\Parallel\Runtime\Runtime;
-use Kode\Parallel\Sync\Mutex;
-use Kode\Parallel\Sync\Semaphore;
+use Kode\Parallel\Concurrency\Lock;
+use Kode\Parallel\Concurrency\Semaphore;
 
-$mutex = new Mutex();
+$mutex = Lock::named('counter');
 $semaphore = new Semaphore(3); // 最多3个并发
 
 $runtime = new Runtime();
@@ -265,7 +265,7 @@ $mutex->withLock(function() use (&$sharedValue) {
 });
 
 // 信号量限流
-$semaphore->withResource(function() {
+$semaphore->withPermits(1, function() {
     // 限流执行，最多3个并发
     processTask();
 });

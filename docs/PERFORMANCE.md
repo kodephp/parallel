@@ -101,8 +101,7 @@ if ($at->tryAdd(1)) { /* 成功 */ } else { /* 退避重试 */ }
 
 - **一对多结果收集**：`Futures::all([...])` 或 `Runtime::run()->get()` 聚合，最省心；
 - **生产者/消费者流**：用 `Concurrency\Channel` 在**同一进程内**做流式传递（≈16.7M ops/s）；
-- **跨进程流式**：`process` 引擎下 Channel 是进程内结构，跨进程请用 `Atomic`/`Barrier` 协调 + 返回值汇总，
-  或借助 `Cluster`（见 `CLUSTER.md`）做跨机器。
+- **跨进程流式**：`process` 引擎下 Channel 是进程内结构，跨进程请用 `Atomic`/`Barrier` 协调 + 返回值汇总。
 
 ---
 
@@ -141,4 +140,4 @@ if ($at->tryAdd(1)) { /* 成功 */ } else { /* 退避重试 */ }
 4. 任务参数/返回值尽量小，避免序列化；
 5. 任务粒度粗一点（批量下发）；
 6. 用 `Futures::all/select` 替代手动轮询 `get()`；
-7. 跨进程高频计数接受「文件锁 ≈ 19.7k ops/s」的合理成本，或用 `Cluster` 分摊。
+7. 跨进程高频计数接受「文件锁 ≈ 19.7k ops/s」的合理成本；若争用极重，改用未命名 `Atomic` 进程内快路径或分片计数。

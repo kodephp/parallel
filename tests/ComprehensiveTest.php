@@ -8,13 +8,7 @@ use PHPUnit\Framework\TestCase;
 use Kode\Parallel\Runtime\Runtime;
 use Kode\Parallel\Task\Task;
 use Kode\Parallel\Future\Future;
-use Kode\Parallel\Channel\Channel;
-use Kode\Parallel\Events\Events;
 use Kode\Parallel\Exception\ParallelException;
-use Kode\Parallel\Sync\Mutex;
-use Kode\Parallel\Sync\Semaphore;
-use Kode\Parallel\Sync\Cond;
-use Kode\Parallel\Sync\Barrier;
 use Kode\Parallel\Curl\CurlMulti;
 use Kode\Parallel\Pipe\Pipe;
 
@@ -59,8 +53,8 @@ class ComprehensiveTest extends TestCase
     public function testSimpleTaskExecution(): void
     {
         $future = $this->runtime->run(fn() => 42);
-        $this->assertTrue($future->done());
         $this->assertEquals(42, $future->get());
+        $this->assertTrue($future->done());
     }
 
     public function testTaskWithArguments(): void
@@ -70,8 +64,8 @@ class ComprehensiveTest extends TestCase
             ['a' => 10, 'b' => 20]
         );
 
-        $this->assertTrue($future->done());
         $this->assertEquals(30, $future->get());
+        $this->assertTrue($future->done());
     }
 
     public function testTaskWithArrayOperations(): void
@@ -127,7 +121,8 @@ class ComprehensiveTest extends TestCase
     {
         $future = $this->runtime->run(fn() => 42);
 
-        $this->assertNull($future->getOrNull());
+        $future->wait(1000);
+        $this->assertNotNull($future->getOrNull());
         $this->assertEquals(42, $future->get());
         $this->assertEquals(42, $future->getOrNull());
     }
@@ -161,8 +156,9 @@ class ComprehensiveTest extends TestCase
         $this->expectException(ParallelException::class);
         $this->expectExceptionMessage('yield');
 
-        $code = 'return function() { yield 1; };';
-        $taskClosure = eval($code);
+        $taskClosure = static function () {
+            yield 1;
+        };
         new Task($taskClosure);
     }
 
@@ -171,104 +167,11 @@ class ComprehensiveTest extends TestCase
         $this->expectException(ParallelException::class);
         $this->expectExceptionMessage('引用');
 
-        $code = 'return function() use (&$ref) { return $ref; };';
         $ref = 1;
-        $taskClosure = eval($code);
+        $taskClosure = function () use (&$ref) {
+            return $ref;
+        };
         new Task($taskClosure);
-    }
-
-    public function testChannelMake(): void
-    {
-        $channel = Channel::make('test_channel');
-        $this->assertInstanceOf(Channel::class, $channel);
-        $this->assertEquals('test_channel', $channel->getName());
-        $this->assertEquals(Channel::CAPACITY_UNBOUNDED, $channel->getCapacity());
-    }
-
-    public function testChannelBounded(): void
-    {
-        $channel = Channel::bounded(5, 'bounded_channel');
-        $this->assertEquals(5, $channel->getCapacity());
-        $this->assertEquals('bounded_channel', $channel->getName());
-    }
-
-    public function testChannelBoundedInvalidCapacity(): void
-    {
-        $this->expectException(ParallelException::class);
-        Channel::bounded(0);
-    }
-
-    public function testChannelSendRecv(): void
-    {
-        $channel = Channel::make();
-
-        $sendFuture = $this->runtime->run(fn($args) => $args['channel']->send('hello'), ['channel' => $channel]);
-        $sendFuture->wait();
-
-        $this->assertFalse($channel->isEmpty());
-
-        $recvFuture = $this->runtime->run(fn($args) => $args['channel']->recv(), ['channel' => $channel]);
-        $this->assertEquals('hello', $recvFuture->get());
-    }
-
-    public function testChannelClose(): void
-    {
-        $channel = Channel::bounded(1);
-        $channel->send('data');
-        $channel->close();
-
-        $this->assertFalse($channel->isEmpty());
-    }
-
-    public function testEventsCreation(): void
-    {
-        $events = new Events();
-        $this->assertCount(0, $events);
-    }
-
-    public function testEventsAttachFuture(): void
-    {
-        $events = new Events();
-        $future = $this->runtime->run(fn() => 42);
-
-        $events->attachFuture('test_future', $future);
-        $this->assertCount(1, $events);
-        $this->assertTrue($events->has('test_future'));
-    }
-
-    public function testEventsAttachChannel(): void
-    {
-        $events = new Events();
-        $channel = Channel::make('events_channel');
-
-        $events->attachChannel('test_channel', $channel);
-        $this->assertTrue($events->has('test_channel'));
-    }
-
-    public function testEventsCancel(): void
-    {
-        $events = new Events();
-        $channel = Channel::make();
-
-        $events->attachChannel('cancel_test', $channel);
-        $this->assertCount(1, $events);
-
-        $events->cancel('cancel_test');
-        $this->assertFalse($events->has('cancel_test'));
-    }
-
-    public function testEventsClear(): void
-    {
-        $events = new Events();
-        $channel1 = Channel::make('ch1');
-        $channel2 = Channel::make('ch2');
-
-        $events->attachChannel('ch1', $channel1);
-        $events->attachChannel('ch2', $channel2);
-        $this->assertCount(2, $events);
-
-        $events->clear();
-        $this->assertCount(0, $events);
     }
 
     public function testFutureGetId(): void
@@ -289,6 +192,7 @@ class ComprehensiveTest extends TestCase
         $this->assertTrue($runtime->isRunning());
 
         $future->wait();
+        $this->assertFalse($runtime->isRunning());
         $runtime->close();
     }
 
@@ -340,81 +244,6 @@ class ComprehensiveTest extends TestCase
         }
     }
 
-    public function testMutexCreation(): void
-    {
-        $mutex = new Mutex();
-        $this->assertFalse($mutex->isLocked());
-
-        $locked = $mutex->lock();
-        $this->assertTrue($locked);
-        $this->assertTrue($mutex->isLocked());
-
-        $mutex->unlock();
-        $this->assertFalse($mutex->isLocked());
-    }
-
-    public function testMutexTryLock(): void
-    {
-        $mutex = new Mutex();
-
-        $this->assertTrue($mutex->tryLock());
-        $this->assertTrue($mutex->isLocked());
-
-        $this->assertFalse($mutex->tryLock());
-        $this->assertTrue($mutex->isLocked());
-
-        $mutex->unlock();
-        $this->assertFalse($mutex->isLocked());
-    }
-
-    public function testMutexWithLock(): void
-    {
-        $mutex = new Mutex();
-        $result = $mutex->withLock(function() {
-            return 'protected_value';
-        });
-
-        $this->assertEquals('protected_value', $result);
-        $this->assertFalse($mutex->isLocked());
-    }
-
-    public function testSemaphoreCreation(): void
-    {
-        $semaphore = new Semaphore(3);
-        $this->assertEquals(3, $semaphore->getCount());
-    }
-
-    public function testSemaphoreInvalidCount(): void
-    {
-        $this->expectException(ParallelException::class);
-        new Semaphore(0);
-    }
-
-    public function testBarrierCreation(): void
-    {
-        $barrier = new Barrier(4);
-        $this->assertEquals(4, $barrier->getCount());
-    }
-
-    public function testBarrierInvalidCount(): void
-    {
-        $this->expectException(ParallelException::class);
-        new Barrier(0);
-    }
-
-    public function testCondCreation(): void
-    {
-        $cond = new Cond();
-        $mutex = new Mutex();
-
-        $this->assertTrue($mutex->lock());
-
-        $result = $cond->wait($mutex, 100);
-        $this->assertFalse($result);
-
-        $mutex->unlock();
-    }
-
     public function testCurlMultiCreation(): void
     {
         if (!extension_loaded('curl')) {
@@ -462,37 +291,6 @@ class ComprehensiveTest extends TestCase
         $this->assertEquals(1, $curlMulti->count());
     }
 
-    public function testProducerConsumerPattern(): void
-    {
-        $channel = Channel::bounded(10);
-        $items = [];
-
-        $producer = function() use ($channel) {
-            for ($i = 0; $i < 100; $i++) {
-                $channel->send($i);
-            }
-            $channel->close();
-        };
-
-        $consumer = function() use ($channel, &$items) {
-            $count = 0;
-            while (!$channel->isEmpty()) {
-                $item = $channel->recv();
-                $items[] = $item;
-                $count++;
-            }
-            return $count;
-        };
-
-        $this->runtime->run($producer);
-        $future = $this->runtime->run($consumer);
-
-        $processedCount = $future->get();
-
-        $this->assertEquals(100, $processedCount);
-        $this->assertCount(100, $items);
-    }
-
     public function testParallelSum(): void
     {
         $futures = [];
@@ -514,17 +312,6 @@ class ComprehensiveTest extends TestCase
 
         $expected = array_sum(range(1, 400000));
         $this->assertEquals($expected, $total);
-    }
-
-    public function testChannelNonBlockingOperations(): void
-    {
-        $channel = Channel::bounded(1);
-        $channel->send('first');
-
-        $this->expectException(ParallelException::class);
-        $this->expectExceptionMessage('通道已满');
-
-        $channel->sendNonBlocking('second');
     }
 
     public function testTaskFromFileNotExists(): void

@@ -1,6 +1,6 @@
 {
     "name": "kode/parallel",
-    "description": "适用于 PHP 8.3+ 的高性能并行并发库：多引擎自动降级（ext-parallel 真线程 / pcntl 多进程 / 同步回退），提供 Runtime、Task、Future、Channel、Events、Fiber、Sync、WorkerPool、Cluster 等完整能力与跨机器分布式任务执行",
+    "description": "适用于 PHP 8.3+ 的高性能并行并发库：多引擎自动降级（ext-parallel 真线程 / pcntl 多进程 / 同步回退），提供 Runtime、Task、Future、Concurrency 同步原语（Lock/Atomic/Semaphore/Barrier/Channel）、Fiber、WorkerPool 等完整能力",
     "keywords": [
         "parallel",
         "concurrency",
@@ -9,18 +9,14 @@
         "multiprocess",
         "fiber",
         "coroutine",
-        "cluster",
-        "distributed",
         "kode",
         "高性能",
         "并行",
         "并发",
-        "协程",
-        "分布式",
-        "跨机器"
+        "协程"
     ],
     "type": "library",
-    "version": "1.10.0",
+    "version": "1.11.0",
     "license": "Apache-2.0",
     "authors": [
         {
@@ -41,8 +37,7 @@
     "suggest": {
         "ext-parallel": "启用 parallel 引擎以获得真正的多线程并行（需要 ZTS 构建的 PHP）",
         "ext-pcntl": "启用 process 引擎，在无 ext-parallel 的类 UNIX 环境下提供多进程并行",
-        "ext-posix": "配合 process 引擎实现子进程精确取消",
-        "ext-sockets": "分布式集群通信"
+        "ext-posix": "配合 process 引擎实现子进程精确取消"
     },
     "autoload": {
         "psr-4": {
@@ -50,8 +45,6 @@
         },
         "files": [
             "src/functions.php",
-            "src/Channel/functions.php",
-            "src/Sync/functions.php",
             "src/Util/Php85.php"
         ]
     },

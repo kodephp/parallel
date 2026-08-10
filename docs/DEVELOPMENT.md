@@ -22,8 +22,7 @@
 - **Runtime** - PHP 解释器线程管理
 - **Task** - 并行任务闭包封装
 - **Future** - 异步任务返回值访问
-- **Channel** - Task 间双向通信
-- **Events** - 事件循环驱动
+- **Channel** - 引擎无关消息通道（Concurrency\Channel）
 - **Fiber** - PHP Fiber 协程封装 (PHP 8.1+)
 
 ## 系统要求
@@ -134,29 +133,17 @@ if ($future->done()) {
 Channel 提供 Task 间的双向通信能力。
 
 ```php
+use Kode\Parallel\Concurrency\Channel;
+
 // 无界限通道
-$ch = Channel::make('unbounded');
+$ch = Channel::make();
 
 // 有界限通道
-$ch = Channel::bounded(10, 'bounded');
+$ch = Channel::bounded(10);
 
 // 发送/接收
 $ch->send($data);
 $data = $ch->recv();
-```
-
-### Events
-
-Events 提供事件循环驱动能力，简化异步编程。
-
-```php
-$events = new Events();
-$events->attachChannel('ch1', $channel1);
-$events->attachFuture('f1', $future1);
-
-foreach ($events as $event) {
-    // 处理事件
-}
 ```
 
 ## 快速开始
@@ -184,13 +171,13 @@ require_once __DIR__ . '/vendor/autoload.php';
 
 use Kode\Parallel\Runtime\Runtime;
 use Kode\Parallel\Task\Task;
-use Kode\Parallel\Channel\Channel;
+use Kode\Parallel\Concurrency\Channel;
 
 // 1. 创建 Runtime
 $runtime = new Runtime();
 
 // 2. 创建通道用于通信
-$channel = Channel::make('work');
+$channel = Channel::make();
 
 // 3. 定义任务
 $producer = new Task(function($args) {
@@ -286,7 +273,7 @@ echo "结果: {$result}\n";
 
 | 方法 | 说明 |
 |------|------|
-| `static make(string $name)` | 创建无界限通道 |
+| `static make()` | 创建无界限通道 |
 | `static bounded(int $capacity)` | 创建有界限通道 |
 | `send(mixed $value)` | 发送数据（阻塞） |
 | `sendNonBlocking(mixed)` | 非阻塞发送 |
@@ -295,31 +282,6 @@ echo "结果: {$result}\n";
 | `isEmpty(): bool` | 检查是否为空 |
 | `isFull(): bool` | 检查是否已满 |
 | `close(): void` | 关闭通道 |
-
-### Events
-
-| 方法 | 说明 |
-|------|------|
-| `attachFuture(string $key, Future)` | 添加 Future |
-| `attachChannel(string $key, Channel)` | 添加 Channel |
-| `setInput(array $input)` | 设置输入 |
-| `poll(): ?Event` | 轮询事件 |
-| `getKeys(): array` | 获取所有键 |
-| `cancel(string $key)` | 取消事件 |
-| `clear(): self` | 清除所有 |
-
-### Event
-
-| 方法 | 说明 |
-|------|------|
-| `getKey(): string` | 获取事件键 |
-| `getType(): string` | 获取类型 |
-| `getValue(): mixed` | 获取值 |
-| `getSource(): int` | 获取来源 |
-| `isReady(): bool` | 是否就绪 |
-| `isClosed(): bool` | 是否关闭 |
-| `isFuture(): bool` | 是否 Future |
-| `isChannel(): bool` | 是否 Channel |
 
 ### Fiber (PHP 8.1+)
 

@@ -165,7 +165,6 @@ $ready = Futures::select([$f1, $f2, $f3], timeoutMs: 1000); // 超时无就绪�
 | 组合器 / select | ✅ all/settle/any/race/select | ❌ | ⚠️ 仅 Events |
 | 同步原语 | ✅ Lock/Atomic/Barrier/Channel（引擎无关） | ✅ Lock/Atomic/Map/Queue | ✅ Mutex/Semaphore/Cond/Barrier |
 | 工作池 | ✅ 引擎无关 WorkerPool | ⚠️ Thread\Pool | ❌ |
-| 跨机器集群 | ✅ Cluster | ❌ | ❌ |
 
 ## 诊断
 

@@ -258,7 +258,7 @@ $runtime->close();
 
 ```php
 use Kode\Parallel\Runtime\Runtime;
-use Kode\Parallel\Channel\Channel;
+use Kode\Parallel\Concurrency\Channel;
 
 // Web 请求处理（ext-parallel 线程）
 $runtime = new Runtime();
@@ -295,10 +295,10 @@ pcntl_wait($status);
 ### ext-parallel Channel 通信
 
 ```php
-use Kode\Parallel\Channel\Channel;
+use Kode\Parallel\Concurrency\Channel;
 
 // 创建通道
-$channel = Channel::make('result', 10);
+$channel = Channel::bounded(10);
 
 // 生产者（线程）
 $runtime = new Runtime();
@@ -386,7 +386,7 @@ for ($i = 0; $i < 100; $i++) {
 }
 
 // 3. 使用 Channel 批量通信
-$channel = Channel::make('batch', 100);
+$channel = Channel::bounded(100);
 ```
 
 ### pcntl 优化

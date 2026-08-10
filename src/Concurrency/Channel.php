@@ -13,9 +13,9 @@ use Kode\Parallel\Exception\ParallelException;
  * {@see \parallel\Channel} 的单运行时语义。基于内存队列实现，无需 ext-parallel / ZTS，
  * 可在 sync / process 引擎下作为同一运行时内的生产者-消费者通道使用。
  *
- * 说明：跨进程的真实 IPC 通道（fork 后的父子进程之间）请使用 parallel 引擎的
- * {@see \Kode\Parallel\Channel\Channel} 或任务返回值/参数传递；本通道专注于
- * 同一运行时内的并发协调，可与 {@see Lock} / {@see Atomic} 组合构建流水线。
+ * 说明：跨进程的真实 IPC 通道（fork 后的父子进程之间）请通过任务返回值/参数传递，
+ * 或结合 Lock / Atomic 等跨进程原语协调；本通道专注于同一运行时内的并发协调，
+ * 可与 {@see Lock} / {@see Atomic} 组合构建流水线。
  */
 final class Channel
 {
