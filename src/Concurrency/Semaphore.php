@@ -80,7 +80,11 @@ class Semaphore
     {
         if ($this->shared) {
             $raw = @file_get_contents($this->dataFile);
-            if ($raw === false || $raw === '') {
+            if ($raw === false) {
+                // 读失败 ≠ 计数为 0：把它当 0 会让下一次写回静默清零已有计数（丢失更新）
+                throw new ParallelException('无法读取共享计数文件: ' . $this->dataFile);
+            }
+            if ($raw === '') {
                 return 0;
             }
             return (int) $raw;

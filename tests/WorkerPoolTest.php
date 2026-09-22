@@ -240,4 +240,41 @@ final class WorkerPoolTest extends TestCase
             $this->markTestSkipped('当前环境未加载 ext-parallel（需 ZTS 构建）');
         }
     }
+
+    public function testMapAcceptsGeneratorInput(): void
+    {
+        $pool = new WorkerPool(2, SyncEngine::NAME);
+
+        // normalize() 用 iterator_to_array 消费掉生成器后，dispatch 必须用同一份数组，
+        // 否则会二次遍历已关闭的生成器（旧实现直接抛 Fatal: Cannot traverse an already closed generator）
+        $result = $pool->map(
+            (static function (): \Generator {
+                for ($i = 1; $i <= 3; ++$i) {
+                    yield $i;
+                }
+            })(),
+            static fn ($v): int => $v * 2
+        );
+        $pool->close();
+
+        $this->assertSame([2, 4, 6], $result);
+    }
+
+    public function testMapSettledAcceptsGeneratorInputOnBatchPath(): void
+    {
+        $pool = new WorkerPool(2, SyncEngine::NAME);
+
+        // 元素数 > concurrency * BATCHES_PER_THREAD 时走批量合并路径
+        $items = (static function (): \Generator {
+            for ($i = 0; $i < 40; ++$i) {
+                yield 'k' . $i => $i;
+            }
+        })();
+        $result = $pool->mapSettled($items, static fn ($v): int => $v + 1);
+        $pool->close();
+
+        $this->assertCount(40, $result);
+        $this->assertSame(40, $result['k39']['value']);
+        $this->assertSame(Futures::STATUS_FULFILLED, $result['k0']['status']);
+    }
 }

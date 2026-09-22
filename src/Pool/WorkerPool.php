@@ -110,7 +110,7 @@ final class WorkerPool
             return $this->mapBatch($normalized, $worker, self::AUTO_BATCH);
         }
 
-        $futures = $this->dispatch($items, $worker);
+        $futures = $this->dispatch($normalized, $worker);
         $results = Futures::all($futures);
         $this->collect();
 
@@ -133,7 +133,7 @@ final class WorkerPool
             return $this->mapBatchSettled($normalized, $worker, self::AUTO_BATCH);
         }
 
-        $futures = $this->dispatch($items, $worker);
+        $futures = $this->dispatch($normalized, $worker);
         $results = Futures::settle($futures);
         $this->collect();
 

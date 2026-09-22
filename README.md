@@ -276,6 +276,7 @@ $pool = new WorkerPool(concurrency: 8);
 
 $results = $pool->map(range(1, 100), static fn(int $n): int => $n * $n);
 $report  = $pool->mapSettled($urls, $fetch);   // 不因单个失败中断
+$stream  = $pool->map($rowGenerator, $render); // 输入可为数组或任意可迭代（生成器只遍历一次，先归整再派发）
 $stats   = $pool->stats();                     // engine / submitted / completed / failed / pending
 
 $pool->close();
@@ -403,6 +404,7 @@ $future = $runtime->run($task, $args);
 $future = $runtime->run(fn($a) => $a['x'] + $a['y'], ['x' => 1, 'y' => 2]);
 
 $runtime->isRunning();
+$runtime->pendingCount();   // 尚未回收的任务数（run/isRunning 会自动回收已完成的 Future）
 $runtime->getBootstrap();
 $runtime->close();
 ```

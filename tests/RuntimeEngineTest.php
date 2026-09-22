@@ -183,4 +183,35 @@ final class RuntimeEngineTest extends TestCase
         $this->assertGreaterThanOrEqual(1, $info['cpu_count']);
         $this->assertGreaterThanOrEqual(2, Sys::recommendedConcurrency());
     }
+
+    public function testRuntimeStopsTrackingCollectedFutures(): void
+    {
+        $runtime = new Runtime(null, SyncEngine::NAME, 2);
+
+        // 「run 完就 get」是最常见写法：结果取走后 Runtime 不该再强引用 Future
+        for ($i = 0; $i < 200; ++$i) {
+            $runtime->run(static fn (): string => str_repeat('x', 2000))->get();
+        }
+
+        $pending = $runtime->pendingCount();
+        $runtime->close();
+
+        // sync 引擎提交即完成，回收后应为 0；并行引擎下最多残留最后一次（下次提交时回收）
+        $this->assertLessThanOrEqual(1, $pending, 'pending 应随提交自清，而不是随提交数无界增长');
+    }
+
+    public function testRuntimeKeepsUnsettledFutureTracked(): void
+    {
+        $runtime = new Runtime(null, SyncEngine::NAME, 1);
+        $future = $runtime->run(static fn (): string => 'x');
+
+        if ($runtime->isRunning()) {
+            $this->assertSame(1, $runtime->pendingCount(), '未取结果的任务仍应计入 pending');
+            $future->get();
+        } else {
+            $this->assertSame(0, $runtime->pendingCount());
+        }
+
+        $runtime->close();
+    }
 }

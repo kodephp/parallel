@@ -239,9 +239,10 @@ echo "结果: {$result}\n";
 
 | 方法 | 说明 |
 |------|------|
-| `__construct(?string $bootstrap)` | 创建 Runtime，可选引导文件 |
-| `run(Task\|callable $task, array $args)` | 执行任务 |
-| `isRunning(): bool` | 检查是否运行中 |
+| `__construct(?string $bootstrap, ?string $engine, int $threads)` | 创建 Runtime：可选引导文件、引擎名（null=自动探测）、线程数（默认 1，FIFO 顺序执行） |
+| `run(Task\|callable $task, array $args)` | 执行任务（提交即顺带回收已完成的 Future） |
+| `isRunning(): bool` | 检查是否运行中（顺带回收已完成的 Future） |
+| `pendingCount(): int` | 尚未回收的任务数（可观测性，不做清理） |
 | `getBootstrap(): ?string` | 获取引导文件路径 |
 | `close(): void` | 关闭 Runtime |
 

@@ -76,6 +76,8 @@ final class Runtime
         $future = $this->engine->submit($closure, $args);
         $this->taskCount++;
         $this->pending[spl_object_id($future)] = $future;
+        // 提交路径顺带回收已完成的 Future：否则「run 完就 get」的结果会一直被强引用着
+        $this->sweep();
 
         return $future;
     }
@@ -121,14 +123,33 @@ final class Runtime
      */
     public function isRunning(): bool
     {
+        $this->sweep();
+
+        $this->running = $this->pending !== [];
+        return $this->running;
+    }
+
+    /**
+     * 尚未回收的任务数（可观测性；本方法不做清理，故可用于验证提交路径已自清）。
+     */
+    public function pendingCount(): int
+    {
+        return count($this->pending);
+    }
+
+    /**
+     * 摘除已完成的 Future。
+     *
+     * Future 强引用着任务结果，只靠 isRunning() 清理的话，「run 完就 get」的
+     * 常规写法会让结果永久留在 Runtime 上（实测 200 次 run+get 后仍持有 200 份）。
+     */
+    private function sweep(): void
+    {
         foreach ($this->pending as $id => $future) {
             if ($future->done()) {
                 unset($this->pending[$id]);
             }
         }
-
-        $this->running = $this->pending !== [];
-        return $this->running;
     }
 
     /**

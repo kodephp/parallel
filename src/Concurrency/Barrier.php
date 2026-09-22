@@ -25,6 +25,9 @@ final class Barrier
 
     private readonly int $count;
 
+    /** 未命名模式下状态文件由本实例 tempnam() 创建，路径不外泄，故可随实例销毁而删除。 */
+    private readonly bool $owned;
+
     public function __construct(int $count, ?string $name = null)
     {
         if ($count < 1) {
@@ -35,9 +38,11 @@ final class Barrier
         if ($name !== null) {
             $this->stateFile = sys_get_temp_dir() . '/kode_barrier_' . md5($name);
             $this->lock = new FileLock('barrier_lk_' . $name);
+            $this->owned = false;
         } else {
             $this->stateFile = tempnam(sys_get_temp_dir(), 'kode_barrier_');
             $this->lock = new FileLock();
+            $this->owned = true;
         }
 
         // 必须在锁保护下完成共享状态的首次初始化，否则多个进程并发构造时，
@@ -149,5 +154,13 @@ final class Barrier
     private function persist(array $state): void
     {
         file_put_contents($this->stateFile, json_encode($state));
+    }
+
+    public function __destruct()
+    {
+        // 具名屏障的状态文件跨进程共享，删了会让其他进程读不到同步状态；只回收私有文件。
+        if ($this->owned) {
+            @unlink($this->stateFile);
+        }
     }
 }

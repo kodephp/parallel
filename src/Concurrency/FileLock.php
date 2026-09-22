@@ -28,12 +28,17 @@ final class FileLock
 
     private bool $locked = false;
 
+    /** 未命名模式下文件由本实例 tempnam() 创建，路径不外泄，故可随实例销毁而删除。 */
+    private readonly bool $owned;
+
     public function __construct(?string $name = null)
     {
         if ($name !== null) {
             $this->file = sys_get_temp_dir() . '/kode_lock_' . md5($name);
+            $this->owned = false;
         } else {
             $this->file = tempnam(sys_get_temp_dir(), 'kode_lock_');
+            $this->owned = true;
         }
     }
 
@@ -120,5 +125,11 @@ final class FileLock
         }
         $this->handle = null;
         $this->locked = false;
+
+        // 只回收本实例 tempnam() 出来的私有文件：具名锁是跨进程共享的路径，
+        // 删掉会让后来者重建另一个 inode，互斥关系就此失效。
+        if ($this->owned) {
+            @unlink($this->file);
+        }
     }
 }

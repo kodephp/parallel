@@ -269,4 +269,81 @@ final class ConcurrencyTest extends TestCase
         $this->assertTrue($a->trySub(2));
         $this->assertSame(3, $a->get());
     }
+    public function testUnnamedLockDeletesItsPrivateFile(): void
+    {
+        $lock = new Lock();
+        $this->assertTrue($lock->withLock(static fn () => 'ok') === 'ok');
+
+        $impl = (new \ReflectionProperty(Lock::class, 'impl'))->getValue($lock);
+        $file = (new \ReflectionProperty($impl, 'file'))->getValue($impl);
+        $this->assertFileExists($file, '加锁期间锁文件必须存在');
+
+        // 连同反射取出的实例一起释放，否则 FileLock 仍被引用，析构不会发生
+        unset($lock, $impl);
+        $this->assertFileDoesNotExist($file, '未命名锁是私有临时文件，实例销毁就该回收（否则常驻进程每把锁漏一个文件）');
+    }
+
+    public function testNamedLockKeepsSharedFileAfterDestruct(): void
+    {
+        $lock = Lock::named('ut_shared_' . uniqid());
+        $lock->withLock(static fn () => null);
+        $impl = (new \ReflectionProperty(Lock::class, 'impl'))->getValue($lock);
+        $path = (new \ReflectionProperty($impl, 'file'))->getValue($impl);
+
+        unset($lock, $impl);
+
+        $this->assertFileExists($path, '具名锁是跨进程共享路径，删掉会让后来者建到另一个 inode，互斥就此失效');
+        @unlink($path);
+    }
+
+    public function testUnnamedBarrierDeletesItsStateFile(): void
+    {
+        $barrier = new Barrier(1);
+        $state = (new \ReflectionProperty(Barrier::class, 'stateFile'))->getValue($barrier);
+        $this->assertFileExists($state);
+
+        unset($barrier);
+        $this->assertFileDoesNotExist($state, '未命名屏障的状态文件随实例回收');
+    }
+
+    public function testAtomicReadFailureThrowsInsteadOfSilentReset(): void
+    {
+        $name = 'ut_lost_' . uniqid();
+        $atomic = new Atomic(0, $name);
+        $atomic->inc();
+        $atomic->inc();
+        $this->assertSame(2, $atomic->get());
+
+        $data = sys_get_temp_dir() . '/kode_atomic_' . md5($name);
+        unlink($data);
+
+        try {
+            $atomic->inc();
+            $this->fail('共享计数文件读不到时必须抛异常，而不是当作 0 再写回');
+        } catch (\Kode\Parallel\Exception\ParallelException $e) {
+            $this->assertStringContainsString('无法读取共享计数文件', $e->getMessage());
+        }
+
+        @unlink($data);
+        @unlink(sys_get_temp_dir() . '/kode_lock_' . md5('atomic_lk_' . $name));
+    }
+
+    public function testSemaphoreReadFailureThrowsInsteadOfReportingNoPermits(): void
+    {
+        $name = 'ut_sem_' . uniqid();
+        $sem = new Semaphore(3, $name);
+        $this->assertSame(3, $sem->getAvailable());
+
+        $data = (new \ReflectionProperty(Semaphore::class, 'dataFile'))->getValue($sem);
+        unlink($data);
+
+        try {
+            $sem->getAvailable();
+            $this->fail('读不到共享文件时应抛异常，而不是报 0 permits（调用方会据此永久等待）');
+        } catch (\Kode\Parallel\Exception\ParallelException $e) {
+            $this->assertStringContainsString('无法读取共享计数文件', $e->getMessage());
+        }
+
+        @unlink(sys_get_temp_dir() . '/kode_lock_' . md5('sem_lk_' . $name));
+    }
 }
