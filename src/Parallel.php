@@ -38,6 +38,17 @@ use Kode\Parallel\Runtime\SharedRuntime;
  */
 final class Parallel
 {
+    /** @var string 版本号（与 composer.json 的 version 保持同步，漏改由 VersionGuardTest 拦下） */
+    public const string VERSION = '1.19.0';
+
+    /**
+     * 获取本包版本号
+     */
+    public static function version(): string
+    {
+        return self::VERSION;
+    }
+
     /**
      * 当前 PHP 是否为 ZTS（线程安全）构建
      */

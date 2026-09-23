@@ -4,11 +4,13 @@
 
 [![PHP Version](https://img.shields.io/badge/PHP-%3E%3D8.3-blue)](https://php.net)
 [![License](https://img.shields.io/badge/License-Apache--2.0-green)](LICENSE)
-[![Package Version](https://img.shields.io/badge/Version-1.14.0-orange)](composer.json)
+[![Package Version](https://img.shields.io/badge/Version-1.19.0-orange)](composer.json)
 [![Engines](https://img.shields.io/badge/Engines-parallel%20%7C%20sync%20%7C%20pluggable-purple)](docs/ENGINE.md)
+
 
 ## 目录
 
+- [版本自述](#版本自述)
 - [简介](#简介)
 - [功能特性](#功能特性)
 - [执行引擎](#执行引擎)
@@ -25,6 +27,12 @@
 - [文档索引](#文档索引)
 
 ---
+
+## 版本自述
+
+本包版本可由类常量核对：`Kode\Parallel\Parallel::VERSION`，或调用 `Parallel::version()`（当前 `1.19.0`）。
+
+`composer.json` 的 `version` 字段是 composer 侧的权威值，类常量是它的交叉核对副本——`tests/VersionGuardTest.php` 在两者不一致时直接失败，杜绝「tag 打了、常量忘改」的漂移。
 
 ## 简介
 
