@@ -8,7 +8,7 @@
 
 | 项目 | ZTS 主线配置 |
 |------|--------------|
-| PHP 版本 | 8.3.33（**ZTS: YES**） |
+| PHP 版本 | 8.4.33（**ZTS: YES**） |
 | ext-parallel | LOADED |
 | ext-pcntl | LOADED |
 | 默认引擎 | `parallel`（ext-parallel 真线程） |

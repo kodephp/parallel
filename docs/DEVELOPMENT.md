@@ -15,7 +15,7 @@
 
 ## 简介
 
-`kode/parallel` 是基于 PHP `ext-parallel` 扩展的多引擎并行并发库，为 PHP 8.3+ 提供简洁、健壮的并行编程接口。自 v1.6.0 起无需 `ext-parallel` 即可运行（自动降级 process / sync 引擎）。
+`kode/parallel` 是基于 PHP `ext-parallel` 扩展的多引擎并行并发库，为 PHP 8.4+ 提供简洁、健壮的并行编程接口。自 v1.6.0 起无需 `ext-parallel` 即可运行（自动降级 process / sync 引擎）。
 
 ### 核心特性
 
@@ -27,7 +27,7 @@
 
 ## 系统要求
 
-- PHP >= 8.3
+- PHP >= 8.4
 - ext-parallel 扩展（可选，提供真线程并行；未安装时自动降级 process / sync 引擎）
 - ext-json (内置)
 - ext-ctype (内置)

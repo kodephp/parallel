@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "1395e3e5df7de94a75f46c96adb9f615",
+    "content-hash": "35cb28ede814d58135de76a5ccc8ca69",
     "packages": [
         {
             "name": "guzzlehttp/psr7",
@@ -127,16 +127,16 @@
         },
         {
             "name": "kode/console",
-            "version": "5.0.0",
+            "version": "5.0.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/kodephp/console.git",
-                "reference": "5a3d916ecda3cf81fdd2addba0d091fbbe2e0235"
+                "reference": "fdae165950b1204ea7887e0ad6cc81e0dde95344"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/kodephp/console/zipball/5a3d916ecda3cf81fdd2addba0d091fbbe2e0235",
-                "reference": "5a3d916ecda3cf81fdd2addba0d091fbbe2e0235",
+                "url": "https://api.github.com/repos/kodephp/console/zipball/fdae165950b1204ea7887e0ad6cc81e0dde95344",
+                "reference": "fdae165950b1204ea7887e0ad6cc81e0dde95344",
                 "shasum": ""
             },
             "require": {
@@ -178,29 +178,28 @@
                 "console",
                 "framework",
                 "kodephp",
-                "php83",
                 "php84",
                 "php85",
                 "terminal"
             ],
             "support": {
                 "issues": "https://github.com/kodephp/console/issues",
-                "source": "https://github.com/kodephp/console/tree/v5.0.0"
+                "source": "https://github.com/kodephp/console/tree/v5.0.1"
             },
-            "time": "2026-10-10T09:03:59+00:00"
+            "time": "2026-10-10T16:48:04+00:00"
         },
         {
             "name": "kode/context",
-            "version": "4.0.0",
+            "version": "4.0.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/kodephp/context.git",
-                "reference": "b35da1be3141016831909a71827b568ebcfc2cda"
+                "reference": "243f408794fc0b766d381caa4bbf3401894da4cf"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/kodephp/context/zipball/b35da1be3141016831909a71827b568ebcfc2cda",
-                "reference": "b35da1be3141016831909a71827b568ebcfc2cda",
+                "url": "https://api.github.com/repos/kodephp/context/zipball/243f408794fc0b766d381caa4bbf3401894da4cf",
+                "reference": "243f408794fc0b766d381caa4bbf3401894da4cf",
                 "shasum": ""
             },
             "require": {
@@ -245,7 +244,7 @@
                 "distributed",
                 "fiber",
                 "opentelemetry",
-                "php83",
+                "php84",
                 "request-context",
                 "swoole",
                 "swow",
@@ -261,7 +260,7 @@
                 "issues": "https://github.com/kodephp/context/issues",
                 "source": "https://github.com/kodephp/context"
             },
-            "time": "2026-10-10T09:04:06+00:00"
+            "time": "2026-10-10T16:50:25+00:00"
         },
         {
             "name": "kode/facade",
@@ -318,16 +317,16 @@
         },
         {
             "name": "kode/fibers",
-            "version": "5.0.0",
+            "version": "5.0.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/kodephp/fibers.git",
-                "reference": "81415bf626ce7b276063e4af1b974e787d36dc98"
+                "reference": "9ad53cd5fe7b04e1745536f37aec6afb554e01c9"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/kodephp/fibers/zipball/81415bf626ce7b276063e4af1b974e787d36dc98",
-                "reference": "81415bf626ce7b276063e4af1b974e787d36dc98",
+                "url": "https://api.github.com/repos/kodephp/fibers/zipball/9ad53cd5fe7b04e1745536f37aec6afb554e01c9",
+                "reference": "9ad53cd5fe7b04e1745536f37aec6afb554e01c9",
                 "shasum": ""
             },
             "require": {
@@ -376,9 +375,9 @@
             "description": "Kode/Fibers - 高性能 PHP Fiber 协程调度器。提供协程池、上下文传递、分布式调度、断路器、负载均衡、RPC 通信（JSON/gRPC/WebSocket）、分布式事务（2PC/TCC/Saga）、多框架集成等企业级特性。",
             "support": {
                 "issues": "https://github.com/kodephp/fibers/issues",
-                "source": "https://github.com/kodephp/fibers/tree/v5.0.0"
+                "source": "https://github.com/kodephp/fibers/tree/v5.0.1"
             },
-            "time": "2026-10-10T09:16:45+00:00"
+            "time": "2026-10-10T16:47:51+00:00"
         },
         {
             "name": "psr/container",

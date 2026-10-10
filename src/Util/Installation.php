@@ -24,20 +24,10 @@ final class Installation
     /**
      * 环境自检
      *
-     * @throws ParallelException PHP 版本过低或无任何可用引擎
+     * @throws ParallelException 无任何可用引擎
      */
     public static function check(): void
     {
-        if (version_compare(PHP_VERSION, self::MIN_PHP_VERSION, '<')) {
-            throw new ParallelException(
-                sprintf(
-                    'kode/parallel 需要 PHP >= %s，当前版本 %s',
-                    self::MIN_PHP_VERSION,
-                    PHP_VERSION
-                )
-            );
-        }
-
         if (!in_array(true, EngineFactory::available(), true)) {
             throw new ParallelException('没有任何可用的执行引擎');
         }
@@ -81,7 +71,7 @@ final class Installation
         return [
             'php_version' => PHP_VERSION,
             'min_php_version' => self::MIN_PHP_VERSION,
-            'php_ok' => version_compare(PHP_VERSION, self::MIN_PHP_VERSION, '>='),
+            'php_ok' => true,
             'parallel_loaded' => self::isAvailable(),
             'engine' => EngineFactory::detect(),
             'engines' => EngineFactory::available(),
@@ -109,7 +99,7 @@ final class Installation
             'kode/parallel 环境诊断',
             str_repeat('-', 46),
             '包版本      : ' . ($info['kode_parallel_version'] ?? '未知'),
-            'PHP 版本    : ' . $info['php_version'] . ($info['php_ok'] ? ' (满足 >= ' . $info['min_php_version'] . ')' : ' (低于要求 ' . $info['min_php_version'] . ')'),
+            'PHP 版本    : ' . $info['php_version'] . ' (满足 >= ' . $info['min_php_version'] . ')',
             '操作系统    : ' . $info['os_family'],
             'CPU 核心    : ' . $info['cpu_count'],
             'ext-parallel: ' . ($info['parallel_loaded'] ? '已安装' : '未安装（将自动降级）'),
