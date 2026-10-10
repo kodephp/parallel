@@ -17,7 +17,7 @@ use Kode\Parallel\Exception\ParallelException;
 final class Installation
 {
     /** 本库要求的最低 PHP 版本 */
-    public const string MIN_PHP_VERSION = '8.3.0';
+    public const string MIN_PHP_VERSION = '8.4.0';
 
     private static ?bool $extensionLoaded = null;
 

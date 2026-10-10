@@ -1,8 +1,8 @@
 # Kode/Parallel
 
-高性能 PHP 并行并发库，为 PHP 8.3+ 提供简洁、健壮的并行编程接口。**以 `ext-parallel` 真线程为主线**：批量合并派发、逐元素容错、限并发 HTTP 扇出，多进程编排通过 `EngineFactory::register()` 接入 `kode/process` 等外部后端。
+高性能 PHP 并行并发库，为 PHP 8.4+ 提供简洁、健壮的并行编程接口。**以 `ext-parallel` 真线程为主线**：批量合并派发、逐元素容错、限并发 HTTP 扇出，多进程编排通过 `EngineFactory::register()` 接入 `kode/process` 等外部后端。
 
-[![PHP Version](https://img.shields.io/badge/PHP-%3E%3D8.3-blue)](https://php.net)
+[![PHP Version](https://img.shields.io/badge/PHP-%3E%3D8.4-blue)](https://php.net)
 [![License](https://img.shields.io/badge/License-Apache--2.0-green)](LICENSE)
 [![Package Version](https://img.shields.io/badge/Version-1.19.0-orange)](composer.json)
 [![Engines](https://img.shields.io/badge/Engines-parallel%20%7C%20sync%20%7C%20pluggable-purple)](docs/ENGINE.md)
@@ -36,7 +36,7 @@
 
 ## 简介
 
-`kode/parallel` 是适用于 PHP 8.3+ 的高性能并行并发库，提供面向对象的高层 API、完整中文文档，以及 PHP 8.5 新特性的前向兼容实现。
+`kode/parallel` 是适用于 PHP 8.4+ 的高性能并行并发库，提供面向对象的高层 API、完整中文文档，以及 PHP 8.5 新特性的前向兼容实现。
 
 自 **v1.6.0** 起引入引擎抽象层；**v1.7.0** 进一步提供引擎无关的同步原语（`Lock`/`Atomic`/`Barrier`/`Channel`，无需 ZTS/ext-parallel）与 `Future` 组合子。同一套代码在装了 `ext-parallel` 的机器上跑真线程（本库主线），在受限环境下退化为同步执行；**多进程编排不是本包职责**——需要时通过 `EngineFactory::register()` 接入 `kode/process` 等后端，与本库统一调度/自动探测无缝协作。
 
@@ -388,7 +388,7 @@ $ready = Futures::select([$f1, $f2, $f3], timeoutMs: 1000);
 | 同步原语 | ✅ Lock/Atomic/Barrier/Channel（引擎无关，**跨进程**） | ✅ Lock/Atomic/Map/Queue（**同进程共享内存**） | ✅ Mutex/Semaphore/Cond/Barrier | ⚠️ 同步方法 |
 | 工作池 | ✅ 引擎无关 `WorkerPool` + 非阻塞 `ThreadPool` | ⚠️ `Thread\Pool` | ❌（需自管 Runtime） | ❌ |
 | 协程 | ✅ Fiber 集成 | ✅ 协程 | ❌ | ❌ |
-| 最低 PHP | 8.3 | 8.1–8.5（线程需 ZTS） | 7.2（ZTS） | 7.2（ZTS） |
+| 最低 PHP | 8.4 | 8.1–8.5（线程需 ZTS） | 7.2（ZTS） | 7.2（ZTS） |
 
 > 对标版本：Swoole **6.2.2**（2026-07，6.x 最新稳定版）。其原生线程必须 ZTS + `--enable-swoole-thread` 编译，
 > 且需禁用 pthreads；kode/parallel 的 `Concurrency\*` 原语在**普通非 ZTS PHP** 上即可运行，并天然**跨进程**共享状态——

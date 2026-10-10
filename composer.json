@@ -1,6 +1,6 @@
 {
     "name": "kode/parallel",
-    "description": "适用于 PHP 8.3+ 的高性能多线程并行并发库：基于 ext-parallel 真线程（ZTS）的主引擎 + 同步回退引擎，可通过 EngineFactory::register() 接入 kode/process 等多进程后端；提供 Runtime、Task、Future、Concurrency 同步原语（Lock/Atomic/Semaphore/Barrier/Channel）、Fiber、WorkerPool 等完整能力",
+    "description": "适用于 PHP 8.4+ 的高性能多线程并行并发库：基于 ext-parallel 真线程（ZTS）的主引擎 + 同步回退引擎，可通过 EngineFactory::register() 接入 kode/process 等多进程后端；提供 Runtime、Task、Future、Concurrency 同步原语（Lock/Atomic/Semaphore/Barrier/Channel）、Fiber、WorkerPool 等完整能力",
     "keywords": [
         "parallel",
         "concurrency",
@@ -17,7 +17,7 @@
         "ext-parallel"
     ],
     "type": "library",
-    "version": "1.19.0",
+    "version": "2.0.0",
     "license": "Apache-2.0",
     "authors": [
         {
@@ -27,10 +27,10 @@
         }
     ],
     "require": {
-        "php": ">=8.3",
-        "kode/context": "^3.0",
-        "kode/facade": "^3.0",
-        "kode/fibers": "^4.1"
+        "php": "^8.4",
+        "kode/context": "^4",
+        "kode/facade": "^4",
+        "kode/fibers": "^5"
     },
     "require-dev": {
         "phpunit/phpunit": "^10.0"

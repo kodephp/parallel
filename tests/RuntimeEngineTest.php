@@ -154,7 +154,7 @@ final class RuntimeEngineTest extends TestCase
         $info = Installation::getInfo();
 
         $this->assertTrue($info['php_ok']);
-        $this->assertSame('8.3.0', $info['min_php_version']);
+        $this->assertSame('8.4.0', $info['min_php_version']);
         $packageVersion = json_decode((string) file_get_contents(__DIR__ . '/../composer.json'), true)['version'];
         $this->assertSame($packageVersion, $info['kode_parallel_version']);
         $this->assertArrayHasKey('sync', $info['engines']);
