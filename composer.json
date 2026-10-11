@@ -17,7 +17,7 @@
         "ext-parallel"
     ],
     "type": "library",
-    "version": "2.0.4",
+    "version": "2.0.5",
     "license": "Apache-2.0",
     "authors": [
         {
@@ -28,6 +28,7 @@
     ],
     "require": {
         "php": "^8.4",
+        "ext-curl": "*",
         "kode/context": "^4",
         "kode/facade": "^4",
         "kode/fibers": "^5"
@@ -38,6 +39,10 @@
     "suggest": {
         "ext-parallel": "启用 parallel 引擎以获得真正的多线程并行（需要 ZTS 构建的 PHP），本库主引擎",
         "kode/process": "需要多进程编排时，通过 EngineFactory::register() 接入，与本库统一调度/自动探测无缝协作"
+    },
+    "support": {
+        "issues": "https://github.com/kodephp/parallel/issues",
+        "source": "https://github.com/kodephp/parallel"
     },
     "autoload": {
         "psr-4": {
