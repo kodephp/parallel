@@ -127,16 +127,16 @@
         },
         {
             "name": "kode/console",
-            "version": "5.0.4",
+            "version": "5.0.5",
             "source": {
                 "type": "git",
                 "url": "https://github.com/kodephp/console.git",
-                "reference": "72143aba213ae0f54edbcfffd4bc86d8e61d7c25"
+                "reference": "bb66e2a0b05c7bbb196b8a24f42be7785a0fab99"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/kodephp/console/zipball/72143aba213ae0f54edbcfffd4bc86d8e61d7c25",
-                "reference": "72143aba213ae0f54edbcfffd4bc86d8e61d7c25",
+                "url": "https://api.github.com/repos/kodephp/console/zipball/bb66e2a0b05c7bbb196b8a24f42be7785a0fab99",
+                "reference": "bb66e2a0b05c7bbb196b8a24f42be7785a0fab99",
                 "shasum": ""
             },
             "require": {
@@ -184,9 +184,9 @@
             ],
             "support": {
                 "issues": "https://github.com/kodephp/console/issues",
-                "source": "https://github.com/kodephp/console/tree/v5.0.4"
+                "source": "https://github.com/kodephp/console"
             },
-            "time": "2026-10-11T10:47:24+00:00"
+            "time": "2026-10-11T16:54:10+00:00"
         },
         {
             "name": "kode/context",
@@ -264,16 +264,16 @@
         },
         {
             "name": "kode/facade",
-            "version": "4.0.0",
+            "version": "4.0.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/kodephp/facade.git",
-                "reference": "c64d1dd05cf8cbd80616819d9f15d4d0ab53aebf"
+                "reference": "b2052dfbac726fa7f561bd391de31ded2881bb57"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/kodephp/facade/zipball/c64d1dd05cf8cbd80616819d9f15d4d0ab53aebf",
-                "reference": "c64d1dd05cf8cbd80616819d9f15d4d0ab53aebf",
+                "url": "https://api.github.com/repos/kodephp/facade/zipball/b2052dfbac726fa7f561bd391de31ded2881bb57",
+                "reference": "b2052dfbac726fa7f561bd391de31ded2881bb57",
                 "shasum": ""
             },
             "require": {
@@ -311,22 +311,22 @@
             ],
             "support": {
                 "issues": "https://github.com/kodephp/facade/issues",
-                "source": "https://github.com/kodephp/facade/tree/v4.0.0"
+                "source": "https://github.com/kodephp/facade"
             },
-            "time": "2026-10-10T09:16:08+00:00"
+            "time": "2026-10-11T16:54:35+00:00"
         },
         {
             "name": "kode/fibers",
-            "version": "5.0.4",
+            "version": "5.0.5",
             "source": {
                 "type": "git",
                 "url": "https://github.com/kodephp/fibers.git",
-                "reference": "fd20dea8e2b42233b00292a7b244a4c5cb4988b6"
+                "reference": "98c16589823e07a7e7b7b8a5095b2a2d4459cadc"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/kodephp/fibers/zipball/fd20dea8e2b42233b00292a7b244a4c5cb4988b6",
-                "reference": "fd20dea8e2b42233b00292a7b244a4c5cb4988b6",
+                "url": "https://api.github.com/repos/kodephp/fibers/zipball/98c16589823e07a7e7b7b8a5095b2a2d4459cadc",
+                "reference": "98c16589823e07a7e7b7b8a5095b2a2d4459cadc",
                 "shasum": ""
             },
             "require": {
@@ -345,6 +345,9 @@
             },
             "suggest": {
                 "ext-curl": "用于 HTTP 客户端 cURL 驱动",
+                "ext-pdo": "PDO 扩展 - 用于 SQLite/PDO 缓存驱动",
+                "ext-posix": "POSIX 扩展 - 用于 IOuring 探测等信号支持",
+                "ext-redis": "Redis 扩展 - 用于 Redis 池/存储",
                 "ext-swoole": "用于 Swoole 协程支持",
                 "ext-swow": "用于 Swow 协程支持",
                 "kode/facade": "可选；未安装时自动降级为基础静态代理（native driver）",
@@ -375,9 +378,9 @@
             "description": "Kode/Fibers - 高性能 PHP Fiber 协程调度器。提供协程池、上下文传递、分布式调度、断路器、负载均衡、RPC 通信（JSON/gRPC/WebSocket）、分布式事务（2PC/TCC/Saga）、多框架集成等企业级特性。",
             "support": {
                 "issues": "https://github.com/kodephp/fibers/issues",
-                "source": "https://github.com/kodephp/fibers/tree/v5.0.4"
+                "source": "https://github.com/kodephp/fibers"
             },
-            "time": "2026-10-11T10:47:51+00:00"
+            "time": "2026-10-11T16:54:39+00:00"
         },
         {
             "name": "psr/container",
