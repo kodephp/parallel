@@ -43,11 +43,13 @@ final class ValueFuture implements FutureInterface
         return new self(null, $error);
     }
 
+    #[\Override]
     public function done(): bool
     {
         return true;
     }
 
+    #[\Override]
     public function get(): mixed
     {
         if ($this->error !== null) {
@@ -63,26 +65,31 @@ final class ValueFuture implements FutureInterface
         return $this->value;
     }
 
+    #[\Override]
     public function getOrNull(): mixed
     {
         return $this->error === null ? $this->value : null;
     }
 
+    #[\Override]
     public function wait(int $timeoutMs = 0): bool
     {
         return true;
     }
 
+    #[\Override]
     public function cancel(): bool
     {
         return false;
     }
 
+    #[\Override]
     public function isCancelled(): bool
     {
         return $this->cancelled;
     }
 
+    #[\Override]
     public function getId(): string
     {
         return $this->id;

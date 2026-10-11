@@ -230,6 +230,7 @@ final class Fiber
     /**
      * 转换为字符串表示
      */
+    #[\Override]
     public function __toString(): string
     {
         $status = match (true) {

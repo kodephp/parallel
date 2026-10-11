@@ -70,11 +70,13 @@ final class ChainedFuture implements FutureInterface
         $this->resolved = true;
     }
 
+    #[\Override]
     public function done(): bool
     {
         return $this->parent->done();
     }
 
+    #[\Override]
     public function get(): mixed
     {
         $this->resolve();
@@ -86,6 +88,7 @@ final class ChainedFuture implements FutureInterface
         return $this->result;
     }
 
+    #[\Override]
     public function getOrNull(): mixed
     {
         try {
@@ -95,21 +98,25 @@ final class ChainedFuture implements FutureInterface
         }
     }
 
+    #[\Override]
     public function wait(int $timeoutMs = 0): bool
     {
         return $this->parent->wait($timeoutMs);
     }
 
+    #[\Override]
     public function cancel(): bool
     {
         return $this->parent->cancel();
     }
 
+    #[\Override]
     public function isCancelled(): bool
     {
         return $this->cancelled || $this->parent->isCancelled();
     }
 
+    #[\Override]
     public function getId(): string
     {
         return $this->parent->getId() . '.chained';

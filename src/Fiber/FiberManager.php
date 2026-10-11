@@ -305,6 +305,7 @@ final class FiberManager
     /**
      * 转换为字符串表示
      */
+    #[\Override]
     public function __toString(): string
     {
         return sprintf(
