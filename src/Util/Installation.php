@@ -56,6 +56,7 @@ final class Installation
     /**
      * @deprecated 1.6.0 语义已变更，请使用 assertExtension()
      */
+    #[\Deprecated('请使用 assertExtension()', since: '1.6.0')]
     public static function assert(): void
     {
         self::assertExtension();
