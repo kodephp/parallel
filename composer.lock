@@ -127,16 +127,16 @@
         },
         {
             "name": "kode/console",
-            "version": "5.0.3",
+            "version": "5.0.4",
             "source": {
                 "type": "git",
                 "url": "https://github.com/kodephp/console.git",
-                "reference": "0a9ecf5b766bd9840c0be36086389bdb56dc1c33"
+                "reference": "72143aba213ae0f54edbcfffd4bc86d8e61d7c25"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/kodephp/console/zipball/0a9ecf5b766bd9840c0be36086389bdb56dc1c33",
-                "reference": "0a9ecf5b766bd9840c0be36086389bdb56dc1c33",
+                "url": "https://api.github.com/repos/kodephp/console/zipball/72143aba213ae0f54edbcfffd4bc86d8e61d7c25",
+                "reference": "72143aba213ae0f54edbcfffd4bc86d8e61d7c25",
                 "shasum": ""
             },
             "require": {
@@ -184,9 +184,9 @@
             ],
             "support": {
                 "issues": "https://github.com/kodephp/console/issues",
-                "source": "https://github.com/kodephp/console/tree/v5.0.3"
+                "source": "https://github.com/kodephp/console/tree/v5.0.4"
             },
-            "time": "2026-10-11T05:17:29+00:00"
+            "time": "2026-10-11T10:47:24+00:00"
         },
         {
             "name": "kode/context",
@@ -317,16 +317,16 @@
         },
         {
             "name": "kode/fibers",
-            "version": "5.0.3",
+            "version": "5.0.4",
             "source": {
                 "type": "git",
                 "url": "https://github.com/kodephp/fibers.git",
-                "reference": "250c14d861ef0da18afd21eb9bc7154023e644f9"
+                "reference": "fd20dea8e2b42233b00292a7b244a4c5cb4988b6"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/kodephp/fibers/zipball/250c14d861ef0da18afd21eb9bc7154023e644f9",
-                "reference": "250c14d861ef0da18afd21eb9bc7154023e644f9",
+                "url": "https://api.github.com/repos/kodephp/fibers/zipball/fd20dea8e2b42233b00292a7b244a4c5cb4988b6",
+                "reference": "fd20dea8e2b42233b00292a7b244a4c5cb4988b6",
                 "shasum": ""
             },
             "require": {
@@ -375,9 +375,9 @@
             "description": "Kode/Fibers - 高性能 PHP Fiber 协程调度器。提供协程池、上下文传递、分布式调度、断路器、负载均衡、RPC 通信（JSON/gRPC/WebSocket）、分布式事务（2PC/TCC/Saga）、多框架集成等企业级特性。",
             "support": {
                 "issues": "https://github.com/kodephp/fibers/issues",
-                "source": "https://github.com/kodephp/fibers/tree/v5.0.3"
+                "source": "https://github.com/kodephp/fibers/tree/v5.0.4"
             },
-            "time": "2026-10-11T05:17:45+00:00"
+            "time": "2026-10-11T10:47:51+00:00"
         },
         {
             "name": "psr/container",
