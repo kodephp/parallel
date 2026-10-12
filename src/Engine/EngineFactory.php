@@ -178,13 +178,7 @@ final class EngineFactory
             );
         }
 
-        foreach (self::names() as $name) {
-            if (self::isSupported($name)) {
-                return $name;
-            }
-        }
-
-        return SyncEngine::NAME;
+        return array_find(self::names(), fn($name) => self::isSupported($name)) ?? SyncEngine::NAME;
     }
 
     /**

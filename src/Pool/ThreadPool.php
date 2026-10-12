@@ -518,13 +518,7 @@ final class ThreadPool
 
     private function hasBusy(): bool
     {
-        foreach ($this->busy as $future) {
-            if ($future !== null) {
-                return true;
-            }
-        }
-
-        return false;
+        return array_any($this->busy, fn($future) => $future !== null);
     }
 
     private function countBusy(): int
