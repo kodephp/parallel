@@ -118,6 +118,27 @@ final class TaskTest extends TestCase
         Task::fromFile('/tmp/kode-parallel-missing-' . bin2hex(random_bytes(4)) . '.php');
     }
 
+    public function testFromFileWrapsParseErrorAsParallelException(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'kode_task_');
+        $this->assertIsString($path);
+        file_put_contents($path, "if ( { broken\n");
+
+        try {
+            try {
+                Task::fromFile($path);
+                $this->fail('应抛出 ParallelException');
+            } catch (ParallelException $e) {
+                $this->assertStringContainsString('无法编译', $e->getMessage());
+                $this->assertStringContainsString($path, $e->getMessage());
+                $this->assertInstanceOf(\ParseError::class, $e->getPrevious());
+                $this->assertNotSame([], $e->getContext());
+            }
+        } finally {
+            @unlink($path);
+        }
+    }
+
     public function testFromFileBuildsRunnableTask(): void
     {
         $path = tempnam(sys_get_temp_dir(), 'kode_task_');

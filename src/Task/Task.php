@@ -107,8 +107,19 @@ final class Task
 
         self::assertSource($taskCode);
 
-        /** @var \Closure|false $task */
-        $task = @eval('return function(array $args = []) { ' . $taskCode . ' };');
+        // PHP 7+ eval 的语法错误以 ParseError 抛出（@ 只抑制告警、拦不住异常），
+        // 这里包成领域异常并带上文件/行号与原始解析错误，便于 DX 定位。
+        try {
+            /** @var \Closure|false $task */
+            $task = eval('return function(array $args = []) { ' . $taskCode . ' };');
+        } catch (\ParseError $e) {
+            throw new ParallelException(
+                "Task 代码片段无法编译 ({$file}:{$startLine}): {$e->getMessage()}",
+                0,
+                $e,
+                ['file' => $file, 'startLine' => $startLine, 'endLine' => $endLine]
+            );
+        }
 
         if (!$task instanceof \Closure) {
             throw new ParallelException("Task 代码片段无法编译: {$file}:{$startLine}");

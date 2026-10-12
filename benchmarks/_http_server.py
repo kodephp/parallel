@@ -32,7 +32,14 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
+class ConcurrentServer(ThreadingHTTPServer):
+    # 默认 request_queue_size=5：macOS/BSD 在监听队列满时对新 SYN 直接 RST，
+    # 50 并发压测会立刻拿到 "Connection refused"。放宽到 128 以承载整批并发握手。
+    request_queue_size = 128
+    daemon_threads = True
+
+
 if __name__ == "__main__":
-    server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    server = ConcurrentServer(("127.0.0.1", PORT), Handler)
     print(f"listening on http://127.0.0.1:{PORT} (delay={DEFAULT_DELAY}ms, threaded)", flush=True)
     server.serve_forever()

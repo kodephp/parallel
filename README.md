@@ -24,6 +24,7 @@
 - [性能压测](#性能压测)
 - [最佳实践](#最佳实践)
 - [常见问题](#常见问题)
+- [安全说明](#安全说明)
 - [文档索引](#文档索引)
 
 ---
@@ -844,6 +845,34 @@ $runtime->run(fn($args) => $args['ch']->send($data), ['ch' => $channel]);
 | 调度 | 用户态 | 内核态 |
 | 切换开销 | 微秒级 | 毫秒级 |
 | 共享内存 | 不共享 | 共享 |
+
+---
+
+## 安全说明
+
+**任务代码是代码执行，不是数据。** `Task::fromFile()` 会读取文件行片段并
+用 `eval` 编译为闭包——这等价于 `include` 该片段。只应从你信任的来源
+（本应用仓库内的任务定义文件）构造任务，绝不能把外部输入（请求参数、
+队列消息、上传内容）拼进任务代码或行号范围。
+
+相关防线与行为约定：
+
+- **编译失败显式报错**：任务片段语法错误会以 `ParallelException` 抛出
+  （携带 `file:line`、原始 `ParseError` 作 `previous`、以及
+  `file/startLine/endLine` context），不会静默失败，也不会让原生
+  `ParseError` 裸奔到调用方。
+- **源码断言先行**：编译前先走 `assertSource()` 对片段做源码级校验；
+  源码不可读（`eval` 产生、内置函数）时自动跳过并以
+  `isSourceChecked() === false` 标记。
+- **IPC 报文反序列化**：`MessageQueue` / `SharedMemoryIPC` / `SocketIPC`
+  的 `unserialize()` 一律 `allowed_classes => false`——IPC 只承载数据，
+  不允许在反序列化时实例化任意类（对象注入防线）。
+- **同信任域例外**：`NativeRuntime` 的 task 数据/结果管道与
+  `TcpProtocol`/`LengthPrefix` 采用「抑制坏帧告警 + 跳过损坏报文 +
+  `b:0;` 合法 false 语义」，因为载荷是本应用 fork 子进程产生的
+  （同信任域），且 task 载荷允许携带业务对象（保持 BC）。
+- **资源边界**：线程/进程数、并发度都会影响整机稳定性，生产按容量
+  规划设置，不要把 `maxThreads`/扇出规模交给不可信输入决定。
 
 ---
 
