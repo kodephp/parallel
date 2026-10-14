@@ -138,7 +138,7 @@ final class Barrier
      */
     private function load(): array
     {
-        $raw = file_get_contents($this->stateFile);
+        $raw = @file_get_contents($this->stateFile);
         if ($raw === false) {
             return ['arrived' => 0, 'released' => false, 'gen' => 0];
         }
@@ -153,7 +153,9 @@ final class Barrier
      */
     private function persist(array $state): void
     {
-        file_put_contents($this->stateFile, json_encode($state));
+        // 应用层 lock 已串行化调用方；LOCK_EX 再兜一层文件系统级互斥，
+        // 防止绕过 Barrier 直接读写 stateFile 的外部进程看到半写内容。
+        file_put_contents($this->stateFile, json_encode($state), LOCK_EX);
     }
 
     public function __destruct()
