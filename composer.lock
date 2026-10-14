@@ -317,16 +317,16 @@
         },
         {
             "name": "kode/fibers",
-            "version": "5.0.7",
+            "version": "5.0.8",
             "source": {
                 "type": "git",
                 "url": "https://github.com/kodephp/fibers.git",
-                "reference": "b28611425040fb90890d3399f3fa9c0b7fab8482"
+                "reference": "78bbb164f249f1780e717ea2371b42090d374e15"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/kodephp/fibers/zipball/b28611425040fb90890d3399f3fa9c0b7fab8482",
-                "reference": "b28611425040fb90890d3399f3fa9c0b7fab8482",
+                "url": "https://api.github.com/repos/kodephp/fibers/zipball/78bbb164f249f1780e717ea2371b42090d374e15",
+                "reference": "78bbb164f249f1780e717ea2371b42090d374e15",
                 "shasum": ""
             },
             "require": {
@@ -380,7 +380,7 @@
                 "issues": "https://github.com/kodephp/fibers/issues",
                 "source": "https://github.com/kodephp/fibers"
             },
-            "time": "2026-10-12T09:11:10+00:00"
+            "time": "2026-10-14T02:52:48+00:00"
         },
         {
             "name": "psr/container",
