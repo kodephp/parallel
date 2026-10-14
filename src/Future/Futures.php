@@ -199,10 +199,9 @@ final class Futures
         $sleep = self::MIN_POLL_US;
 
         while (true) {
-            foreach ($list as $future) {
-                if ($future->done()) {
-                    return $future;
-                }
+            $done = array_find($list, fn($future) => $future->done());
+            if ($done !== null) {
+                return $done;
             }
 
             if ($deadline === null) {
