@@ -248,7 +248,8 @@ final class FiberManager
         $startTime = hrtime(true);
         $timeoutNs = $timeoutMs * 1_000_000;
 
-        while (!$fiber->isTerminated() && $fiber->isSuspended()) {
+        // resume 可使纤程终止，跨迭代状态静态不可见，保留循环护栏
+        while (!$fiber->isTerminated() && $fiber->isSuspended()) { // @phpstan-ignore booleanNot.alwaysTrue (resume 后状态可翻转)
             $fiber->resume(null);
 
             if ($timeoutMs > 0 && (hrtime(true) - $startTime) >= $timeoutNs) {

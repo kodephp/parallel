@@ -49,10 +49,8 @@ final class CurlMulti
 
     public function __construct()
     {
+        // PHP 8+ 起 curl_multi_init() 返回 CurlMultiHandle，永不为 false
         $this->multiHandle = curl_multi_init();
-        if ($this->multiHandle === false) {
-            throw new ParallelException('无法初始化 curl_multi');
-        }
     }
 
     /**
@@ -295,10 +293,11 @@ final class CurlMulti
         $handle = $this->requests[$key]['handle'];
 
         $error = curl_error($handle);
+        // curl_getinfo 存根可回 false（历史签名），句柄有效时恒为 array，归一化以钉住形状
         $results[$key] = [
             'error' => $error !== '' ? $error : null,
             'response' => curl_multi_getcontent($handle),
-            'info' => curl_getinfo($handle),
+            'info' => curl_getinfo($handle) ?: [],
         ];
 
         $this->requests[$key]['finished'] = true;

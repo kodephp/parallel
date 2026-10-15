@@ -305,7 +305,7 @@ final class ThreadPool
         }
 
         return isset($this->results[$id]) && !$this->results[$id]['ok']
-            && str_contains($this->results[$id]['error']?->getMessage() ?? '', '取消');
+            && str_contains($this->results[$id]['error']->getMessage(), '取消');
 
     }
 

@@ -99,7 +99,9 @@ final class Futures
         $errors = [];
         $sleep = self::MIN_POLL_US;
 
-        while ($pending !== []) {
+        // pending 集合在循环体内被不断收缩直至清空，首次进入时的非空性
+        // 静态不可传递到后续迭代，保留空集护栏
+        while ($pending !== []) { // @phpstan-ignore notIdentical.alwaysTrue (循环体内收缩，空集退出护栏)
             foreach ($pending as $key => $future) {
                 if (!$future->done()) {
                     continue;

@@ -23,6 +23,7 @@ use Kode\Parallel\Exception\ParallelException;
  */
 final class Fiber
 {
+    /** @var \Fiber<mixed, mixed, mixed, mixed> */
     private \Fiber $fiber;
     private bool $started = false;
     private mixed $returnValue = null;
@@ -181,6 +182,7 @@ final class Fiber
     /**
      * 获取原始 Fiber 对象
      *
+     * @return \Fiber<mixed, mixed, mixed, mixed>
      * @internal
      */
     public function getInnerFiber(): \Fiber

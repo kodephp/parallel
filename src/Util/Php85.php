@@ -57,12 +57,9 @@ if (!function_exists('pipe')) {
         $result = $value;
 
         foreach ($functions as $function) {
-            if (is_array($function) && isset($function[1]) && is_array($function[1])) {
-                [$callback, $args] = $function;
-                $result = $callback($result, ...$args);
-            } else {
-                $result = $function($result);
-            }
+            // callable 类型约束下，数组可调用形态只可能是 [对象/类名, 方法名]，
+            // [$fn, $argsArray] 无法通过 is_callable 校验（TypeError），直接调用即可
+            $result = $function($result);
         }
 
         return $result;
